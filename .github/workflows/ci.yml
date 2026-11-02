@@ -43,7 +43,11 @@ jobs:
   control-image:
     if: github.event_name != 'pull_request'
     needs: [backend, frontend]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -84,7 +88,11 @@ jobs:
   engine-image:
     if: github.event_name != 'pull_request'
     needs: [backend, frontend]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
