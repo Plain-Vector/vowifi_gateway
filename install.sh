@@ -508,6 +508,75 @@ run_control() {
 
 engine_names() { docker ps -a --format '{{.Names}}' 2>/dev/null | grep "^${ENGINE_PREFIX}" || true; }
 
+# Administrator setup uses the built runtime in either mode. No password is passed in argv.
+admin_command() {
+  DATA_ABS=$(data_dir_abs)
+  if [ "$MODE" = local ]; then
+    VOWIFI_DATA="$DATA_ABS" "$VENV_DIR/bin/python" "$REPO_DIR/control/admin.py" "$@"
+  else
+    docker run --rm -it -v "${DATA_ABS}:/data" -e VOWIFI_DATA=/data \
+      --entrypoint python "$CONTROL_IMAGE" admin.py "$@"
+  fi
+}
+
+first_admin_setup() {
+  if [ -t 0 ] && [ -t 1 ]; then
+    admin_command setup --optional
+  else
+    info "non-interactive install: first administrator can be created in the WebUI"
+  fi
+}
+
+cmd_setup_admin() {
+  need_root
+  resolve_mode
+  admin_command setup
+}
+
+cmd_reset_password() {
+  need_root
+  resolve_mode
+  admin_command password
+}
+
+cmd_setup_code() {
+  need_root
+  code_path="$(data_dir_abs)/auth/setup-code"
+  [ -r "$code_path" ] || die "no unused setup code at $code_path; an administrator may already exist. Use 'setup-admin' or 'reset-password'."
+  printf 'One-time WebUI setup code (do not share): '
+  cat "$code_path"
+  printf '\nCreate your account in the WebUI. This code is deleted after successful setup.\n'
+}
+
+wait_control_ready() {
+  check_host=127.0.0.1
+  if [ "$MODE" = local ]; then
+    case "$VOWIFI_BIND" in ''|0.0.0.0|::) ;; *) check_host="$VOWIFI_BIND" ;; esac
+  fi
+  case "$check_host" in *:*) check_host="[$check_host]" ;; esac
+  check_url="https://${check_host}:${VOWIFI_PORT}/api/auth/status"
+  ready_attempt=0
+  while [ "$ready_attempt" -lt 30 ]; do
+    if have curl; then
+      if curl -kfsS --connect-timeout 2 --max-time 3 "$check_url" >/dev/null 2>&1; then return; fi
+    elif have wget; then
+      if wget --no-check-certificate -q --timeout=3 -O /dev/null "$check_url"; then return; fi
+    else
+      die "curl or wget is required to verify WebUI startup"
+    fi
+    ready_attempt=$((ready_attempt + 1))
+    sleep 1
+  done
+  die "WebUI did not become ready at $check_url; inspect '$0 logs' before continuing"
+}
+
+print_access_help() {
+  printf '   Sign in with the administrator created during installation.\n'
+  printf '   If you skipped account creation: sudo %s setup-code\n' "$0"
+  printf '   Create an account in the terminal: sudo %s setup-admin\n' "$0"
+  printf '   Reset a lost password: sudo %s reset-password\n' "$0"
+}
+
 # ------------------------------------------------------------------ subcommands
 cmd_install() {
   need_root
@@ -528,16 +597,19 @@ cmd_install() {
   persist_mode "$MODE"
   if [ "$MODE" = docker ]; then
     build_control_image
+    first_admin_setup
     run_control
   else
     build_webui_local
     ensure_control_local_deps
     setup_venv
+    first_admin_setup
     run_control_local
   fi
   DATA_ABS=$(data_dir_abs)
   LAN_IP="${VOWIFI_ADVERTISE_ADDR:-$(detect_lan_ip)}"
   printf '\n'
+  wait_control_ready
   info "install complete (mode: $MODE)"
   printf '   %sWebUI:%s   https://%s:%s\n' "$B" "$N" "${LAN_IP:-<host-ip>}" "$VOWIFI_PORT"
   printf '   %sData:%s    %s\n' "$B" "$N" "$DATA_ABS"
@@ -547,7 +619,8 @@ cmd_install() {
     printf '   %sControl:%s Docker container (%s); engines run in Docker\n' "$B" "$N" "$CONTROL_NAME"
   fi
   printf '   %sManage:%s  %s status | logs | reload | disable-autostart | uninstall\n' "$B" "$N" "$0"
-  printf '   Accept the self-signed cert in your browser, then provision your SIM in the dashboard.\n'
+  print_access_help
+  printf '   Accept the local HTTPS certificate, sign in, then provision your SIM in the dashboard.\n'
 }
 
 cmd_reload() {
@@ -948,6 +1021,9 @@ ${B}VoWiFi→SIP gateway installer${N}
   $0 enable-autostart     start on boot
   $0 disable-autostart    do not start on boot
   $0 uninstall [--purge]  remove vowifi containers/images/service (--purge also deletes data+venv)
+  $0 setup-admin          create the first administrator interactively (no default password)
+  $0 setup-code           display the one-time code if terminal account setup was skipped
+  $0 reset-password       reset the administrator password locally
   $0 status               show mode + component status
   $0 logs                 follow control-plane logs
   $0 build-lpac [--lpac-src PATH] [--dest DIR]   compile lpac into data/lpac (local eSIM LPA)
@@ -1000,6 +1076,9 @@ case "$CMD" in
   enable-autostart)   cmd_enable_autostart ;;
   disable-autostart)  cmd_disable_autostart ;;
   uninstall)          cmd_uninstall ;;
+  setup-admin)        cmd_setup_admin ;;
+  setup-code)         cmd_setup_code ;;
+  reset-password)     cmd_reset_password ;;
   status)             cmd_status ;;
   logs)               cmd_logs ;;
   build-lpac)         cmd_build_lpac ;;

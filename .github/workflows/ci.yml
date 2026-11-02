@@ -40,3 +40,57 @@ jobs:
           cache-dependency-path: webui/package-lock.json
       - run: npm ci
       - run: npm run build
+  control-image:
+    if: github.event_name != 'pull_request'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build control image from source
+        run: docker build --progress=plain -f control/Dockerfile -t vowifi/control:ci .
+      - name: Start clean manager and verify first-run setup
+        run: |
+          docker run -d --name control-smoke -p 127.0.0.1:18443:8443 vowifi/control:ci
+          for attempt in $(seq 1 30); do
+            if curl -kfsS https://127.0.0.1:18443/api/auth/status >/dev/null; then break; fi
+            sleep 2
+          done
+          docker exec -i control-smoke python - <<'PY'
+          import json, secrets, ssl, urllib.request, urllib.error
+          from http.cookiejar import CookieJar
+          from pathlib import Path
+          context = ssl._create_unverified_context()
+          client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()), urllib.request.HTTPSHandler(context=context))
+          root = 'https://127.0.0.1:8443'
+          status = json.load(client.open(root+'/api/auth/status'))
+          assert status['configured'] is False
+          try:
+              client.open(root+'/api/settings')
+              raise AssertionError('Anonymous settings access was allowed')
+          except urllib.error.HTTPError as error:
+              assert error.code == 401
+          code = Path('/data/auth/setup-code').read_text().strip()
+          body = json.dumps({'username':'admin','password':secrets.token_urlsafe(24),'setup_code':code}).encode()
+          client.open(urllib.request.Request(root+'/api/auth/setup',data=body,headers={'Content-Type':'application/json'})).read()
+          assert json.load(client.open(root+'/api/auth/status'))['authenticated']
+          assert 'ntfy' in json.load(client.open(root+'/api/settings'))
+          assert not Path('/data/auth/setup-code').exists()
+          print('Clean container setup/login/settings smoke passed')
+          PY
+      - name: Container diagnostics
+        if: always()
+        run: docker logs control-smoke 2>/dev/null || true
+  engine-image:
+    if: github.event_name != 'pull_request'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build engine image from source
+        run: docker build --progress=plain -t vowifi/engine:ci engine
+      - name: Verify Asterisk and installed call-filter scripts
+        run: |
+          docker run --rm --entrypoint asterisk vowifi/engine:ci -V
+          docker run --rm --entrypoint python3 vowifi/engine:ci -c "import sys; sys.path.insert(0,'/usr/local/bin'); import call_filter, blocking_match, notify; assert blocking_match.normalize('0612345678') == '+33612345678'; print('Engine imports passed')"

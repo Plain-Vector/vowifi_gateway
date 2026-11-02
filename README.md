@@ -2,6 +2,75 @@
 
 A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SIM into an IMS endpoint you can call/text via standard SIP clients (softphones, desk phones, Asterisk trunks). One SIM = one routable phone number; multiple SIMs can run in parallel (each gets its own engine container + port block).
 
+## Install on a fresh server
+
+Run these commands **on the server where the SIM reader is connected**. You need Linux,
+root/sudo access and Internet. The default mode uses systemd for the manager; Docker is
+installed automatically for Asterisk. No host Node.js setup is required.
+
+```sh
+# Debian/Ubuntu: install Git if it is not already available
+sudo apt-get update
+sudo apt-get install -y git
+
+git clone https://github.com/Plain-Vector/vowifi_gateway.git
+cd vowifi_gateway
+sudo ./install.sh install
+```
+
+The installer builds Asterisk/engine and WebUI from source, installs the Python runtime,
+sets up the host PC/SC service, and enables autostart. A first Asterisk build can take
+20–30 minutes on a small ARM server. It stops on a build/startup error; do not proceed
+until it prints **install complete** and the WebUI URL.
+
+During installation, choose **Create the administrator now**, keep username `admin`
+or choose another, then enter and repeat your own password. Input is hidden. The WebUI
+is ready for ordinary username/password login — **no registration code is needed**.
+There is no shared/default password in the repository.
+
+Open the printed `https://<server-ip>:8443` address on your computer and accept the
+self-signed local certificate (or configure a trusted certificate in Settings).
+
+### If you skipped administrator creation
+
+From the same server checkout, display the one-time code with:
+
+```sh
+sudo ./install.sh setup-code
+```
+
+Enter that code on the WebUI's **Create administrator** screen. It is generated in
+`<data-directory>/auth/setup-code`, is local to this installation and disappears after
+successful setup. Alternatively create the account directly in the server terminal:
+
+```sh
+sudo ./install.sh setup-admin
+# If an existing administrator forgot the password:
+sudo ./install.sh reset-password
+```
+
+Non-interactive installations skip the password prompt and use this one-time-code
+flow. Re-running install never replaces an existing administrator.
+
+### Connect the SIM and test
+
+1. Insert a VoWiFi-capable SIM into the PC/SC reader. In Dashboard choose **Provision**,
+   enter its PIN and the required IMEI/AMI settings. Credentials are specific to your SIM.
+2. Start one line and wait for **Working / IMS registered**.
+3. Test incoming/outgoing calls and SMS. Configure SIP clients or use the browser softphone.
+4. Call Blocking starts in **Monitor**. Saracroche and ntfy are optional and off; enable
+   them from the WebUI after normal calls work. Use Enforce only after controlled tests.
+
+For a containerized manager, use `sudo ./install.sh install --mode docker` instead;
+the same administrator setup applies. Both modes keep runtime state under `data/`
+(or your configured VOWIFI_DATA_DIR) and remember the selected mode.
+
+**Already running a gateway with local patches?** Use the
+[existing-server rollout](docs/PRODUCTION_TESTING.md) rather than installing over it.
+See [login/recovery and ntfy](docs/SECURITY_NOTIFICATIONS.md) for account details.
+
+---
+
 **What it does:**
 - Reads the SIM's IMS credentials (IMSI/Ki/OPc) via PC/SC
 - Establishes an IPsec ePDG tunnel + IMS registration to your carrier's VoWiFi core
@@ -17,14 +86,6 @@ A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SI
 - *(Optional, for the eSIM tab)* an **eUICC** in the reader, plus a one-time local lpac build (`git clone` [estkme-group/lpac](https://github.com/estkme-group/lpac) next to this repo, then `sudo ./install.sh build-lpac`)
 
 ---
-
-## Local test installation
-
-After installing Python development requirements and building the WebUI, run
-`.venv/bin/python control/preview.py` and open https://127.0.0.1:8843. This loopback-only
-instance uses `data/local-preview`, disables Docker/PCSC engine operations and has a
-separate first-run administrator setup. Its one-time code is in
-`data/local-preview/auth/setup-code`. No live SIM calls or SMS are connected.
 
 ## Call Blocking
 
@@ -81,38 +142,6 @@ In **both** modes the reader is owned by the **host's pcscd**, and **pcsc-lite i
 
 ---
 
-## Quick Start
-
-```bash
-git clone https://github.com/Plain-Vector/vowifi_gateway.git
-cd vowifi_gateway
-sudo ./install.sh install                 # default: local mode (native control plane)
-# or, fully containerized:
-sudo ./install.sh install --mode docker
-```
-
-The installer:
-- Installs Docker (via `get.docker.com` if missing) + host pcscd, **version-locked** to `PCSC_VERSION`
-- Builds the engine image from source (~10–15 min on a Pi; compiles Asterisk + pcsc-lite + the Python SWu tunnel deps; bakes `engine/patches/*`)
-- **local mode**: compiles the WebUI in a throwaway Node container, creates a Python venv (`control/.venv`), and starts the `vowifi-control` systemd service
-- **docker mode**: builds the `vowifi/control` image and starts the control plane in a privileged container
-- Autostart is enabled; prints `https://<host-lan-ip>:8443` — open it in your browser
-
-The chosen mode is remembered (persisted under the data dir), so `reload`/`status`/`logs`/`uninstall` don't need `--mode` again. An explicit `--mode` or the `VOWIFI_MODE` env var always overrides.
-
-Accept the self-signed cert. The WebUI first asks you to create an administrator using
-the one-time code in `data/auth/setup-code` (read it locally with the service owner's
-permissions, for example `sudo cat data/auth/setup-code`). Choose your username and a
-password of at least 12 characters. All management APIs and WebSocket feeds require login.
-See [security, recovery, engine rollout and ntfy](docs/SECURITY_NOTIFICATIONS.md).
-
-Then **provision your SIM** in the dashboard:
-1. Insert the SIM into the reader; the `/` tab shows detected cards
-2. Click **Provision** → enter the SIM PIN, set the IMEI + AMI secret. The ePDG is auto-derived from the SIM's IMSI and the SMSC is read from the SIM (EF_SMSP); if the SIM doesn't carry an SMSC you'll be asked to type one. **IMEISV** is optional — leave it blank to auto-generate one (14-digit IMEI base + a 2-digit software version); it's used to answer the carrier's IKEv2 `DEVICE_IDENTITY` request.
-3. The engine container spins up and walks the state machine: `TUNNEL_DOWN` → `REGISTERING` → `OK` (IMS registered)
-4. Once `OK`, the **Softphone** tab lets you dial out from the browser; external SIP clients connect to `<host-ip>:5060` (UDP) or `:5061` (TLS) / `:8089` (WebRTC/WSS)
-
----
 
 ## Configuration
 
@@ -438,3 +467,14 @@ of additional working carriers welcome.
 ## Credits
 
 Concept + implementation: exploring IMS/VoWiFi as a SIP bridge use case. Builds on the excellent work by phcoder (sysmocom Asterisk VoWiFi integration), fasferraz (SWu-IKEv2 ePDG client), mitshell (CryptoMobile / card), and the pySIM community.
+
+---
+
+## Local test installation
+
+After installing Python development requirements and building the WebUI, run
+`.venv/bin/python control/preview.py` and open https://127.0.0.1:8843. This loopback-only
+instance uses `data/local-preview`, disables Docker/PCSC engine operations and has a
+separate first-run administrator setup. Its one-time code is in
+`data/local-preview/auth/setup-code`. No live SIM calls or SMS are connected.
+

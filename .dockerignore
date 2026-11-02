@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+data
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+webui/dist
+.pytest_cache
+*.pcap

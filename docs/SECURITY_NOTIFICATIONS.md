@@ -8,12 +8,18 @@ page and public auth status are available, while management APIs, `/ws`, `/docs`
 `/redoc` and `/openapi.json` are protected. Static frontend assets contain no credentials;
 the SPA file handler refuses paths outside the built frontend directory.
 
+For an interactive fresh install, the installer offers terminal administrator creation
+before starting the manager. Keep the suggested username admin or choose another and
+enter/repeat a password privately. This consumes the setup code automatically; ordinary
+WebUI login is immediately available. Existing administrators are never overwritten.
+If you skip this step, or install non-interactively, use the WebUI setup flow below.
+
 At first startup a random one-time code is written to `$VOWIFI_DATA/auth/setup-code`.
 Read that file on the server with the service owner's privileges. For the default
 installation this is typically:
 
 ```sh
-sudo cat data/auth/setup-code
+sudo ./install.sh setup-code
 ```
 
 Open the HTTPS WebUI, enter the code and choose a username and a password (12–256
@@ -57,7 +63,9 @@ VOWIFI_DATA=/absolute/path/to/data .venv/bin/python control/admin.py
 ```
 
 Use the service's Python interpreter when deployed (for native installer installations,
-usually `control/.venv/bin/python`). The utility prompts privately with getpass; do not
+usually `control/.venv/bin/python`). You can also run `sudo ./install.sh reset-password` from the installation checkout.
+To create an account before WebUI setup, run `sudo ./install.sh setup-admin`.
+The utility prompts privately with getpass; do not
 put the password in a command line or Git. It resets the existing administrator password,
 revokes sessions and clears login throttling. It does not delete calls, SMS or rules.
 
