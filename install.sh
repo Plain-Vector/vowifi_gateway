@@ -356,7 +356,7 @@ ensure_ccid_host() {
 _build_pcsclite_host() {
   # Build + install pcsc-lite $PCSC_VERSION to /usr on the host (client lib + headers + daemon),
   # and install a systemd unit so it runs as the reader daemon. Idempotent.
-  pcsc_systemd_option=""
+  pcsc_systemd_option="-Dsystemdunit=system"
   if ! have systemctl; then pcsc_systemd_option="-Dlibsystemd=false"; fi
   tmp=$(mktemp -d)
   ( cd "$tmp" \
