@@ -1,10 +1,6 @@
+import { useTranslation } from 'react-i18next'
+import { tx, statusLabel } from '../i18n/index.js'
 import React, { useEffect, useId } from 'react'
-
-const SHORT_LABELS = {
-  'Active SIM / line': 'Line',
-  'Show logs for': 'Logs',
-  'Configuring line': 'Config',
-}
 
 // Per-page SIM/line picker for multi-SIM setups. Labels each line with the physical reader
 // it currently occupies (from the detected-cards state) so it's clear which reader's engine
@@ -13,7 +9,8 @@ const SHORT_LABELS = {
 // Only lines whose physical reader is currently PRESENT are listed — a provisioned line
 // whose reader/card is unplugged is dropped from the dropdown (its config stays under SIM
 // Config and it reappears when the reader returns).
-export default function SimSelector({ instances = [], cards = [], selected, setSelected, label = 'Active SIM / line' }) {
+export default function SimSelector({ instances = [], cards = [], selected, setSelected, labelKey = 'lineSelector.active' }) {
+  useTranslation()
   const selectId = useId()
   // A present card that maps to this line (by matched id or ICCID) means its reader is here.
   const readerFor = (i) => cards.find((c) => c.present &&
@@ -30,7 +27,8 @@ export default function SimSelector({ instances = [], cards = [], selected, setS
   }, [id, live.map((i) => i.id).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!live.length) return null
-  const shortLabel = SHORT_LABELS[label] || 'Line'
+  const label = tx(labelKey)
+  const shortLabel = tx({ 'lineSelector.active': 'lineSelector.activeShort', 'lineSelector.logs': 'lineSelector.logsShort', 'lineSelector.config': 'lineSelector.configShort' }[labelKey] || 'lineSelector.activeShort')
   return (
     <div className="card sim-selector">
       <label htmlFor={selectId} className="sim-selector-label">
@@ -39,15 +37,15 @@ export default function SimSelector({ instances = [], cards = [], selected, setS
       </label>
       <select id={selectId} className="sim-selector-select" value={id || ''}
         onChange={(e) => setSelected(e.target.value)}>
-        {!id && <option value="">— select —</option>}
+        {!id && <option value="">{tx("lineSelector.select")}</option>}
         {live.map((i) => {
           const c = readerFor(i)
-          const rd = c ? `Reader ${c.index}` : null
-          const st = i.status?.label ? ` — ${i.status.label}` : ''
+          const rd = c ? tx("lineSelector.reader", {value1: c.index}) : null
+          const st = i.status?.label ? ` — ${statusLabel('lineStatus', i.status.state, i.status.label)}` : ''
           return <option key={String(i.id)} value={String(i.id)}>{rd ? `${rd} · ` : ''}{i.name || i.imsi}{st}</option>
         })}
       </select>
-      {live.length === 1 && <span className="sim-selector-hint">only line</span>}
+      {live.length === 1 && <span className="sim-selector-hint">{tx("lineSelector.onlyLine")}</span>}
     </div>
   )
 }

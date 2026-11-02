@@ -1,3 +1,6 @@
+import { useTranslation } from 'react-i18next'
+import { tx, notice, renderNotice } from './i18n/index.js'
+import LanguageSelector from './i18n/LanguageSelector.jsx'
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { api, connectWs } from './api.js'
 import Dashboard from './views/Dashboard.jsx'
@@ -12,17 +15,18 @@ import CallBlocking from './views/CallBlocking.jsx'
 // [key, label, icon, alwaysAvailable] — views not marked alwaysAvailable are disabled
 // while no PC/SC reader is connected (they all operate on a physical SIM line).
 const NAV = [
-  ['dashboard', 'Dashboard', '▤', true],
-  ['softphone', 'Softphone', '☎', false],
-  ['messages', 'Messages', '✉', false],
-  ['sims', 'SIM Config', '▣', false],
-  ['esim', 'eSIM', '◎', false],
-  ['blocking', 'Call Blocking', '⛔', true],
-  ['settings', 'Settings', '⚙', true],
-  ['logs', 'Logs', '≣', true],
+  ['dashboard', 'navigation.dashboard', '▤', true],
+  ['softphone', 'navigation.softphone', '☎', false],
+  ['messages', 'navigation.messages', '✉', false],
+  ['sims', 'navigation.sims', '▣', false],
+  ['esim', 'navigation.esim', '◎', false],
+  ['blocking', 'navigation.blocking', '⛔', true],
+  ['settings', 'navigation.settings', '⚙', true],
+  ['logs', 'navigation.logs', '≣', true],
 ]
 
 export default function App({ onLogout, preview }) {
+  const { i18n } = useTranslation()
   const [view, setView] = useState('dashboard')
   const [instances, setInstances] = useState([])
   const [cards, setCards] = useState([])
@@ -31,6 +35,8 @@ export default function App({ onLogout, preview }) {
   const [toast, setToast] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'auto')
   const wsEvents = useRef({ handlers: new Set() })
+
+  useEffect(() => { document.title = tx('navigation.' + view) + ' · VoWiFi Gateway' }, [view, i18n.resolvedLanguage])
 
   // Apply + persist theme. 'auto' follows the OS (falls back to light if unavailable).
   useEffect(() => {
@@ -67,19 +73,23 @@ export default function App({ onLogout, preview }) {
       if (msg.type === 'engine' && ['card_removed', 'reader_lost', 'reader_added', 'reader_removed'].includes(msg.event)) {
         const name = msg.args?.[0]
         showToast({
-          card_removed: 'SIM removed — line stopped',
-          reader_lost: 'Reader unplugged — line stopped',
-          reader_added: `Card reader connected${name ? `: ${name}` : ''}`,
-          reader_removed: `Card reader disconnected${name ? `: ${name}` : ''}`,
+          card_removed: notice("navigation.simRemovedLineStopped"),
+          reader_lost: notice("navigation.readerUnpluggedLineStopped"),
+          reader_added: notice("navigation.cardReaderConnected", {value1: name ? `: ${name}` : ''}),
+          reader_removed: notice("navigation.cardReaderDisconnected", {value1: name ? `: ${name}` : ''}),
         }[msg.event])
         refresh()
       }
       wsEvents.current.handlers.forEach((h) => h(msg))
       if (msg.type === 'sms' && msg.message?.direction === 'in') {
-        showToast(`SMS from ${msg.message.peer}`)
+        showToast(notice("navigation.smsFrom", {
+  value1: msg.message.peer
+}))
       }
       if (msg.type === 'call' && msg.call?.direction === 'in') {
-        showToast(`Incoming call from ${msg.call.peer}`)
+        showToast(notice("navigation.incomingCallFrom", {
+  value1: msg.call.peer
+}))
       }
     })
     return off
@@ -114,11 +124,12 @@ export default function App({ onLogout, preview }) {
         <div className="app-brand" style={{ fontWeight: 800, fontSize: 18, padding: '4px 8px 16px', letterSpacing: .5 }}>
           <span style={{ color: '#3b82f6' }}>Vo</span>WiFi<span style={{ color: 'var(--text-mute)', fontWeight: 500 }}> gateway</span>
         </div>
-        {NAV.map(([k, label, icon, always]) => {
+        {NAV.map(([k, labelKey, icon, always]) => {
+          const label = tx(labelKey)
           const disabled = noReaders && !always
           return (
             <button className="app-nav-button" aria-label={`${icon} ${label}`} key={k} onClick={() => !disabled && setView(k)} disabled={disabled}
-              title={disabled ? 'No PC/SC reader detected — connect a card reader to enable' : undefined}
+              title={disabled ? tx("navigation.noPcScReaderDetectedConnectACardReader") : undefined}
               style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
                 background: view === k ? 'var(--active)' : 'transparent', color: view === k ? '#fff' : 'var(--text-dim)',
                 opacity: disabled ? .35 : 1,
@@ -129,25 +140,24 @@ export default function App({ onLogout, preview }) {
         })}
         <div className="app-theme-picker" style={{ marginTop: 'auto', display: 'flex', gap: 6, padding: 8 }}>
           {[['auto', '🌗'], ['light', '☀'], ['dark', '🌙']].map(([t, icon]) => (
-            <button key={t} onClick={() => setTheme(t)} title={`${t} theme`}
+            <button key={t} onClick={() => setTheme(t)} title={tx('common.theme.' + t)}
               style={{
                 flex: 1, padding: '6px 0', borderRadius: 8, cursor: 'pointer', fontSize: 11,
-                fontWeight: 600, textTransform: 'capitalize', border: '1px solid var(--border)',
+                fontWeight: 600, border: '1px solid var(--border)',
                 background: theme === t ? 'var(--primary)' : 'transparent',
                 color: theme === t ? '#fff' : 'var(--text-dim)',
-              }}>{icon} {t}</button>
+              }}>{icon} {tx('common.theme.' + t)}</button>
           ))}
         </div>
-        <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
-        <div className="app-instance-count" style={{ fontSize: 11, color: 'var(--text-faint)', padding: '0 8px 8px' }}>
-          {instances.length} SIM{instances.length !== 1 ? 's' : ''} configured
-        </div>
+        <button className="btn btn-ghost" onClick={onLogout}>{tx("navigation.signOut")}</button>
+        <div className="app-instance-count" style={{ fontSize: 11, color: 'var(--text-faint)', padding: '0 8px 8px' }}>{tx('common.simCount', {count: instances.length})}</div>
       </aside>
 
       <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {preview && <div style={{ padding: 10, background: 'var(--active)', fontSize: 13 }}>Local test installation — no SIM or live calls connected</div>}
+        {preview && <div style={{ padding: 10, background: 'var(--active)', fontSize: 13 }}>{tx("navigation.localTestInstallationNoSimOrLiveCallsConnected")}</div>}
         <div className="app-header" style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 16, flexShrink: 0, padding: '24px 24px 0' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, textTransform: 'capitalize' }}>{view}</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{tx('navigation.' + view)}</h1>
+          <LanguageSelector />
           {/* per-page SIM selectors (SimSelector) handle multi-SIM switching on the views that
               operate on a single line — softphone / messages / logs / SIM config */}
         </div>
@@ -163,7 +173,7 @@ export default function App({ onLogout, preview }) {
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, right: 24, background: '#1d4ed8', color: '#fff', padding: '12px 18px', borderRadius: 12, boxShadow: '0 8px 30px #0008', fontWeight: 600 }}>
-          {toast}
+          {renderNotice(toast)}
         </div>
       )}
     </div>

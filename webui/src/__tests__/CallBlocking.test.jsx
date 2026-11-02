@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CallBlocking from '../views/CallBlocking.jsx'
 import { api } from '../api.js'
+import i18n, { changeLanguage } from '../i18n/index.js'
+import LanguageSelector from '../i18n/LanguageSelector.jsx'
 vi.mock('../api.js', () => ({ api: { blocking: vi.fn() } }))
 
 const defaults = { mode: 'monitor', arcep: false, saracroche: false, block_withheld: false, block_unavailable: false }
@@ -14,7 +16,8 @@ const scopeSelect = () => screen.getByLabelText('Settings and personal rules for
 const mount = async () => { render(<CallBlocking instances={instances} showToast={vi.fn()} />); await screen.findByRole('region', { name: 'Filtering settings' }); await screen.findByRole('region', { name: 'Saracroche database settings' }) }
 const save = async () => { fireEvent.click(filterForm().getByText('Save changes')); await waitFor(() => expect(filterForm().getByText('Saved')).toBeTruthy()) }
 const switchScope = async (scope) => { fireEvent.change(scopeSelect(), { target: { value: scope } }); await waitFor(() => expect(filterForm().getByRole('heading').textContent).toBe(scope === '*' ? 'Global filtering settings' : 'Line filtering settings')) }
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage('en')
   personalRules = []; historyEvents = []; lookupResult = { action: 'allow', would_block: false, source: 'none', mode: 'monitor', reason: 'No match' }; updateResult = { ok: true }
   configs = { '*': { ...defaults }, '1': {}, '2': {} }; failSave = false; pendingRead = null
   provider = { connection: { source: 'remote', country_codes: 'FR', selected_list_ids: null }, auto_update: false, interval_hours: 24, entries: 0, catalog: [], coverage: {}, enabled: false }
@@ -265,6 +268,33 @@ describe('explicit settings lifecycle', () => {
     fireEvent.change(history.getByLabelText('Time period'), { target: { value: '24' } })
     await waitFor(() => expect(api.blocking.mock.calls.some(([method, path]) => method === 'GET' && path.includes('instance=2') && path.includes('decision=would_block') && path.includes('source=saracroche') && path.includes('since='))).toBe(true))
     expect(history.getByRole('button', { name: 'Next' }).disabled).toBe(true)
+  })
+
+  it('switches RU/FR/EN without writes, scope changes or loss of pending settings', async () => {
+    render(<><LanguageSelector /><CallBlocking instances={instances} showToast={vi.fn()} /></>)
+    await screen.findByRole('region', { name: 'Filtering settings' }); await switchScope('1')
+    const scope = scopeSelect()
+    fireEvent.click(screen.getByLabelText('Withheld caller IDs'))
+    fireEvent.change(screen.getByLabelText('Saracroche country codes'), {target:{value:'FR,BE'}})
+    const calls = api.blocking.mock.calls.length
+    await act(async () => changeLanguage('ru'))
+    expect(screen.getByLabelText('Скрытые номера').checked).toBe(true)
+    expect(screen.getByLabelText('Коды стран Saracroche').value).toBe('FR,BE')
+    expect(scope.value).toBe('1')
+    fireEvent.click(screen.getByText('Источник, автор и лицензия'))
+    const license = document.querySelector('a[href="https://creativecommons.org/licenses/by-nc-sa/4.0/"]')
+    expect(license.textContent).toContain('некоммерческое')
+    expect(document.querySelector('a[href="https://saracroche.org/"]')).toBeTruthy()
+    await act(async () => changeLanguage('fr'))
+    expect(license.textContent).toContain('non commercial')
+    expect(screen.getByLabelText('Numéros masqués').checked).toBe(true)
+    expect(scope.value).toBe('1')
+    expect(api.blocking.mock.calls.length).toBe(calls)
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer les modifications',exact:true}))
+    await waitFor(() => expect(configs['1'].block_withheld).toBe(true))
+    expect(configs['*'].block_withheld).toBe(false)
+    await act(async () => changeLanguage('en'))
+    expect(screen.getByLabelText('Withheld caller IDs').checked).toBe(true)
   })
 
 })

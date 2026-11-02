@@ -1,16 +1,18 @@
+import { useTranslation } from 'react-i18next'
+import { tx, notice, renderNotice, errorNotice, formatNumber } from '../i18n/index.js'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api.js'
 
 const DOWNLOAD_STEPS = [
-  ['es10a_get_euicc_configured_addresses', 'Read default SM-DP+'],
-  ['es10b_get_euicc_challenge_and_info', 'Get eUICC challenge'],
-  ['es9p_initiate_authentication', 'Authenticate with SM-DP+'],
-  ['es10b_authenticate_server', 'Authenticate server'],
-  ['es9p_authenticate_client', 'Authenticate client'],
-  ['es8p_metadata_parse', 'Profile preview'],
-  ['es10b_prepare_download', 'Prepare download'],
-  ['es9p_get_bound_profile_package', 'Fetch profile package'],
-  ['es10b_load_bound_profile_package', 'Install on eUICC'],
+  ['es10a_get_euicc_configured_addresses', 'esim.downloadSteps.readAddresses'],
+  ['es10b_get_euicc_challenge_and_info', 'esim.downloadSteps.getChallenge'],
+  ['es9p_initiate_authentication', 'esim.downloadSteps.initiateAuthentication'],
+  ['es10b_authenticate_server', 'esim.downloadSteps.authenticateServer'],
+  ['es9p_authenticate_client', 'esim.downloadSteps.authenticateClient'],
+  ['es8p_metadata_parse', 'esim.downloadSteps.previewProfile'],
+  ['es10b_prepare_download', 'esim.downloadSteps.prepareDownload'],
+  ['es9p_get_bound_profile_package', 'esim.downloadSteps.fetchPackage'],
+  ['es10b_load_bound_profile_package', 'esim.downloadSteps.installProfile'],
 ]
 
 /** Map lpac progress/error names onto the pipeline. Ignore cancel_session etc. */
@@ -31,8 +33,8 @@ function isNonEuiccError(msg) {
 function copyText(text, showToast) {
   if (!text) return
   navigator.clipboard?.writeText(text).then(
-    () => showToast?.('Copied'),
-    () => showToast?.('Copy failed'),
+    () => showToast?.(notice("esim.copied")),
+    () => showToast?.(notice("esim.copyFailed")),
   )
 }
 
@@ -50,6 +52,7 @@ function parseActivationCode(raw) {
 }
 
 function StatePill({ state }) {
+  useTranslation()
   const enabled = String(state || '').toLowerCase() === 'enabled'
   return (
     <span style={{
@@ -57,7 +60,7 @@ function StatePill({ state }) {
       background: enabled ? '#dcfce7' : 'var(--hover)',
       color: enabled ? '#166534' : 'var(--text-dim)',
     }}>
-      {enabled ? 'Enabled' : 'Disabled'}
+      {enabled ? tx("esim.enabled") : tx("esim.disabled")}
     </span>
   )
 }
@@ -70,6 +73,7 @@ function profileDisplayName(p) {
 }
 
 function RenameModal({ profile, busy, onClose, onSave }) {
+  useTranslation()
   const [nick, setNick] = useState(() => profileDisplayName(profile))
   useEffect(() => {
     setNick(profileDisplayName(profile))
@@ -79,17 +83,17 @@ function RenameModal({ profile, busy, onClose, onSave }) {
     <div style={{ position: 'fixed', inset: 0, background: '#0008', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
       onClick={onClose}>
       <div className="card" style={{ width: 360, maxWidth: '92vw', padding: 20 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Rename</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>{tx("esim.rename")}</div>
         <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 14, wordBreak: 'break-all' }}>
           {profile.iccid}
         </div>
         <label style={{ display: 'block', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>Nickname</div>
+          <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>{tx("esim.nickname")}</div>
           <input
             autoFocus
             value={nick}
             onChange={(e) => setNick(e.target.value)}
-            placeholder="Nickname"
+            placeholder={tx("esim.nickname")}
             style={{ width: '100%' }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onSave(nick.trim())
@@ -98,9 +102,9 @@ function RenameModal({ profile, busy, onClose, onSave }) {
           />
         </label>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>{tx("esim.cancel")}</button>
           <button className="btn btn-primary" disabled={busy} onClick={() => onSave(nick.trim())}>
-            {busy ? 'Saving…' : 'Update'}
+            {busy ? tx("esim.saving") : tx("esim.update")}
           </button>
         </div>
       </div>
@@ -109,6 +113,7 @@ function RenameModal({ profile, busy, onClose, onSave }) {
 }
 
 function ProgressBar({ step, done, error }) {
+  useTranslation()
   const resolved = resolveDownloadStep(step)
   const idx = resolved ? DOWNLOAD_STEPS.findIndex(([k]) => k === resolved) : -1
   // Unknown steps (cancel_session, started) must NOT fall back to index 0 — that looked like a jump to step 1.
@@ -119,7 +124,7 @@ function ProgressBar({ step, done, error }) {
         const finished = done || (cur >= 0 && i < cur)
         const active = !done && !error && cur >= 0 && i === cur
         const failed = !!error && cur >= 0 && i === cur
-        const color = failed ? '#ef4444' : finished ? '#22c55e' : active ? '#eab308' : 'var(--border-strong)'
+        const color = failed ? '#ef4444' : finished ? '#22c55e' : active ? '#eab308' : "var(--border-strong)"
         return (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
             <span style={{
@@ -130,7 +135,7 @@ function ProgressBar({ step, done, error }) {
               {finished ? '✓' : failed ? '!' : active ? '…' : i + 1}
             </span>
             <span style={{ color: finished || active || failed ? 'var(--text)' : 'var(--text-mute)', fontWeight: active || failed ? 700 : 500 }}>
-              {label}
+              {tx(label)}
             </span>
           </div>
         )
@@ -146,7 +151,7 @@ function formatBytes(bytes) {
   const k = 1024
   const sizes = ['B', 'KiB', 'MiB', 'GiB']
   const i = Math.min(sizes.length - 1, Math.floor(Math.log(n) / Math.log(k)))
-  return `${Math.round((n / k ** i) * 100) / 100} ${sizes[i]}`
+  return `${formatNumber(n / k ** i, {maximumFractionDigits: 2})} ${sizes[i]}`
 }
 
 function seTarget(reader, se) {
@@ -158,6 +163,7 @@ function seTarget(reader, se) {
 }
 
 function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast }) {
+  useTranslation()
   const dual = (ses || []).length > 1
   const [mode, setMode] = useState('code') // code | manual
   const [activation, setActivation] = useState('')
@@ -179,7 +185,7 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
 
   const submit = async () => {
     setErr('')
-    if (dual && !seId) return setErr('Select which eUICC (SE) to install onto.')
+    if (dual && !seId) return setErr(notice("esim.selectWhichEuiccSeToInstallOnto"))
     const body = {
       reader,
       se_id: seId || ses?.[0]?.id || 'default',
@@ -187,10 +193,10 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
       confirmation_code: confirmation.trim() || undefined,
     }
     if (mode === 'code') {
-      if (!activation.trim()) return setErr('Paste an activation code (LPA:1$…).')
+      if (!activation.trim()) return setErr(notice("esim.pasteAnActivationCodeLpa1"))
       body.activation_code = activation.trim()
     } else {
-      if (!smdp.trim()) return setErr('SM-DP+ address is required.')
+      if (!smdp.trim()) return setErr(notice("esim.smDpAddressIsRequired"))
       body.smdp = smdp.trim()
       body.matching_id = matchingId.trim() || undefined
     }
@@ -200,7 +206,7 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
       onStarted?.()
       onClose()
     } catch (e) {
-      setErr(e.message)
+      setErr(errorNotice(e))
     }
     setBusy(false)
   }
@@ -210,12 +216,12 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
       onClick={onClose}>
       <div className="card" style={{ width: 480, maxWidth: '92vw', padding: 20 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Download eSIM profile</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{tx("esim.downloadEsimProfile")}</h2>
           <button className="btn btn-ghost" onClick={onClose}>✕</button>
         </div>
         {dual && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 6 }}>eUICC</div>
+            <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 6 }}>{tx("esim.euicc")}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(ses || []).map((se, i) => {
                 const selected = seId === se.id
@@ -233,11 +239,9 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
                     }}
                   >
                     <span style={{ display: 'block', fontFamily: 'ui-monospace, monospace', fontSize: 12, wordBreak: 'break-all' }}>
-                      {se.eid || `SE${i + 1} (no EID)`}
+                      {se.eid || tx("esim.seNoEid", {value1: i + 1})}
                     </span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--text-mute)', marginTop: 2 }}>
-                      {se.label || `SE${i + 1}`} · Storage Remaining {formatBytes(se.freeSpace)}
-                    </span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--text-mute)', marginTop: 2 }}>{tx("esim.storageRemaining", {value1: se.label || `SE${i + 1}`, value2: formatBytes(se.freeSpace)})}</span>
                   </button>
                 )
               })}
@@ -245,7 +249,7 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          {[['code', 'Activation code'], ['manual', 'Manual']].map(([k, label]) => (
+          {[['code', tx("esim.activationCode")], ['manual', tx("esim.manual")]].map(([k, label]) => (
             <button key={k} className="btn" onClick={() => setMode(k)}
               style={{ background: mode === k ? 'var(--primary)' : 'var(--hover)', color: mode === k ? '#fff' : 'var(--text-soft)' }}>
               {label}
@@ -254,38 +258,38 @@ function DownloadModal({ reader, ses, imeiDefault, onClose, onStarted, showToast
         </div>
         {mode === 'code' ? (
           <label style={{ display: 'block', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>LPA activation code</div>
+            <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>{tx("esim.lpaActivationCode")}</div>
             <textarea value={activation} onChange={(e) => setActivation(e.target.value)} rows={3}
-              placeholder="LPA:1$smdp.example.com$MATCHING-ID"
+              placeholder={tx("esim.lpa1SmdpExampleComMatchingId")}
               style={{ width: '100%', resize: 'vertical' }} />
           </label>
         ) : (
           <>
             <label style={{ display: 'block', marginBottom: 10 }}>
               <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>SM-DP+</div>
-              <input value={smdp} onChange={(e) => setSmdp(e.target.value)} placeholder="smdp.example.com" style={{ width: '100%' }} />
+              <input value={smdp} onChange={(e) => setSmdp(e.target.value)} placeholder={"smdp.example.com"} style={{ width: '100%' }} />
             </label>
             <label style={{ display: 'block', marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>Matching ID</div>
+              <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>{tx("esim.matchingId")}</div>
               <input value={matchingId} onChange={(e) => setMatchingId(e.target.value)} style={{ width: '100%' }} />
             </label>
           </>
         )}
         <label style={{ display: 'block', marginBottom: 10 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>Confirmation code (optional)</div>
+          <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>{tx("esim.confirmationCodeOptional")}</div>
           <input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} style={{ width: '100%' }} />
         </label>
         <label style={{ display: 'block', marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>
-            IMEI {imeiDefault ? '(from matched line — editable)' : '(optional)'}
+            IMEI {imeiDefault ? tx("esim.fromMatchedLineEditable") : tx("esim.optional")}
           </div>
-          <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder="15-digit IMEI" style={{ width: '100%' }} />
+          <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder={tx("esim.15DigitImei")} style={{ width: '100%' }} />
         </label>
-        {err && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        {err && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{renderNotice(err)}</div>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onClose}>{tx("esim.cancel")}</button>
           <button className="btn btn-primary" disabled={busy || (dual && !seId)} onClick={submit}>
-            {busy ? 'Starting…' : 'Download'}
+            {busy ? tx("esim.starting") : tx("esim.download")}
           </button>
         </div>
       </div>
@@ -311,6 +315,7 @@ function isLineRunning(inst) {
 }
 
 export default function Esim({ cards, instances, refresh, subscribe, showToast }) {
+  useTranslation()
   const present = useMemo(
     () => [...cards].filter((c) => c.present).sort((a, b) => (a.index ?? 0) - (b.index ?? 0)),
     [cards],
@@ -380,7 +385,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
       const st = await api.esimStatus()
       setStatus(st)
       if (!st.available) {
-        setErr('lpac is not installed. Run "sudo ./install.sh build-lpac" on the host.')
+        setErr(notice("esim.lpacIsNotInstalledRunSudoInstallShBuild"))
         setLoaded(false)
         return
       }
@@ -395,7 +400,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
       } else if (list.every((s) => s.error) && seErr.every((m) => isNonEuiccError(m))) {
         setErr('')
       } else if (list.every((s) => s.error)) {
-        setErr(seErr[0] || 'eUICC load failed')
+        setErr(seErr[0] || notice("esim.euiccLoadFailed"))
       } else {
         setErr('')
       }
@@ -415,18 +420,16 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
     if (!reader || loading || busyOp) return
     if (lineRunning && matchedInst) {
       const label = matchedInst.name
-        ? `line ${matchedInst.id} (${matchedInst.name})`
-        : `line ${matchedInst.id}`
+        ? tx("esim.line", {value1: matchedInst.id, value2: matchedInst.name})
+        : tx("esim.line2", {value1: matchedInst.id})
       const ok = confirm(
-        `VoWiFi ${label} is running on this reader.\n\n`
-        + 'Loading eSIM info needs exclusive PC/SC access and will stop the line.\n\n'
-        + 'Stop VoWiFi and Load?',
+        tx('esim.confirmStopForLoad', {line: label}),
       )
       if (!ok) return
       setBusyOp('stop')
       try {
         await api.stop(matchedInst.id)
-        showToast?.(`Line ${matchedInst.id} stopped`)
+        showToast?.(notice("esim.lineStopped", {value1: matchedInst.id}))
         await refresh?.()
       } catch (e) {
         showToast?.(e.message)
@@ -458,7 +461,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
         }))
       } else if (msg.event === 'completed') {
         setDl((d) => ({ ...(d || {}), step: 'completed', event: 'completed', done: true, result: msg.result }))
-        showToast?.('Profile downloaded')
+        showToast?.(notice("esim.profileDownloaded"))
         loadAll()
         refresh?.()
       } else if (msg.event === 'error') {
@@ -471,7 +474,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
           error: msg.error,
           done: false,
         }))
-        showToast?.(msg.error || 'Download failed')
+        showToast?.(msg.error || tx("esim.downloadFailed"))
       } else if (msg.event === 'cancelling') {
         setDl((d) => ({ ...(d || {}), event: 'cancelling' }))
       }
@@ -483,7 +486,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
     setBusyOp('stop')
     try {
       await api.stop(matchedInst.id)
-      showToast?.(`Line ${matchedInst.id} stopped`)
+      showToast?.(notice("esim.lineStopped", {value1: matchedInst.id}))
       await refresh?.()
     } catch (e) {
       showToast?.(e.message)
@@ -495,30 +498,26 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
     setBusyOp(label)
     try {
       await fn()
-      showToast?.(label + ' OK')
+      showToast?.(notice('common.operationSucceeded', {operation: notice('operation.' + label.replaceAll(' ', '_'))}))
       await loadAll()
       await refresh?.()
     } catch (e) {
       showToast?.(e.message)
-      setErr(e.message)
+      setErr(errorNotice(e))
     }
     setBusyOp('')
   }
 
   if (!present.length) {
     return (
-      <div className="card" style={{ padding: 24, color: 'var(--text-dim)' }}>
-        No SIM present. Insert an eUICC into a PC/SC reader to manage profiles.
-      </div>
+      <div className="card" style={{ padding: 24, color: 'var(--text-dim)' }}>{tx("esim.noSimPresentInsertAnEuiccIntoAPc")}</div>
     )
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-          Reader
-          <select value={reader} onChange={(e) => setReader(e.target.value)} style={{ minWidth: 220 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>{tx("esim.reader")}<select value={reader} onChange={(e) => setReader(e.target.value)} style={{ minWidth: 220 }}>
             {present.map((c) => (
               <option key={c.name} value={c.name}>
                 #{c.index} · {c.name}{c.iccid ? ` · ${c.iccid}` : ''}
@@ -527,26 +526,21 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
           </select>
         </label>
         <button className="btn btn-ghost" onClick={requestLoad} disabled={loading || !!busyOp}>
-          {loading ? 'Loading…' : 'Load'}
+          {loading ? tx("esim.loading") : tx("esim.load")}
         </button>
         <button className="btn btn-primary" onClick={() => setShowDl(true)}
-          disabled={!status?.available || !loaded || lineRunning || !!busyOp || !!dl && !dl.done && !dl.error}>
-          Download profile
-        </button>
+          disabled={!status?.available || !loaded || lineRunning || !!busyOp || !!dl && !dl.done && !dl.error}>{tx("esim.downloadProfile")}</button>
       </div>
 
       {lineRunning && (
         <div className="card" style={{ padding: 14, borderColor: '#f59e0b', background: 'color-mix(in srgb, #f59e0b 12%, var(--panel))' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontWeight: 700 }}>VoWiFi running on this reader</div>
-              <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-                Click Load to stop the line and read eSIM info — lpac needs exclusive PC/SC access.
-                {matchedInst ? ` (line ${matchedInst.id}${matchedInst.name ? ` · ${matchedInst.name}` : ''})` : ''}
-              </div>
+              <div style={{ fontWeight: 700 }}>{tx("esim.vowifiRunningOnThisReader")}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>{tx("esim.clickLoadToStopTheLineAndReadEsim", {value1: matchedInst ? tx('esim.lineDetails', {id: matchedInst.id, name: matchedInst.name ? ` · ${matchedInst.name}` : ''}) : ''})}</div>
             </div>
             <button className="btn btn-primary" onClick={stopLine} disabled={busyOp === 'stop' || !matchedInst}>
-              {busyOp === 'stop' ? 'Stopping…' : 'Stop line'}
+              {busyOp === 'stop' ? tx("esim.stopping") : tx("esim.stopLine")}
             </button>
           </div>
         </div>
@@ -554,7 +548,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
 
       {err && (
         <div className="card" style={{ padding: 14, color: '#b91c1c', borderColor: '#fecaca' }}>
-          {err}
+          {renderNotice(err)}
         </div>
       )}
 
@@ -562,41 +556,36 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
         <div className="card" style={{ padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ fontWeight: 700 }}>
-              {dl.done ? 'Download complete' : dl.error ? 'Download failed' : dl.event === 'cancelling' ? 'Cancelling…' : 'Downloading…'}
+              {dl.done ? tx("esim.downloadComplete") : dl.error ? tx("esim.downloadFailed") : dl.event === 'cancelling' ? tx("esim.cancelling") : tx("esim.downloading")}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {!dl.done && !dl.error && (
-                <button className="btn btn-ghost" onClick={() => api.esimDownloadCancel({ reader }).catch((e) => showToast?.(e.message))}>
-                  Cancel
-                </button>
+                <button className="btn btn-ghost" onClick={() => api.esimDownloadCancel({ reader }).catch((e) => showToast?.(e.message))}>{tx("esim.cancel")}</button>
               )}
               {(dl.done || dl.error) && (
-                <button className="btn btn-ghost" onClick={() => setDl(null)}>Dismiss</button>
+                <button className="btn btn-ghost" onClick={() => setDl(null)}>{tx("esim.dismiss")}</button>
               )}
             </div>
           </div>
           <ProgressBar step={dl.step} done={dl.done} error={dl.error} />
           {dl.metadata && (
-            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-soft)' }}>
-              Preview: {dl.metadata.profileName || dl.metadata.serviceProviderName || 'profile'}
-              {dl.metadata.iccid ? ` · ${dl.metadata.iccid}` : ''}
-            </div>
+            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-soft)' }}>{tx("esim.preview", {value1: dl.metadata.profileName || dl.metadata.serviceProviderName || tx("esim.profile"), value2: dl.metadata.iccid ? ` · ${dl.metadata.iccid}` : ''})}</div>
           )}
-          {dl.error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: 13 }}>{dl.error}</div>}
+          {dl.error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: 13 }}>{renderNotice(dl.error)}</div>}
         </div>
       )}
 
       <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Chip</div>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>{tx("esim.chip")}</div>
         {!hasEuicc ? (
           <div style={{ color: 'var(--text-mute)', fontSize: 13, lineHeight: 1.5 }}>
             {status && !status.available
-              ? 'lpac is not installed. Run "sudo ./install.sh build-lpac" on the host.'
+              ? tx("esim.lpacIsNotInstalledRunSudoInstallShBuild")
               : loading
-                ? 'Reading…'
+                ? tx("esim.reading")
                 : !loaded
-                  ? 'Click Load to read chip info from this card (uses lpac / PC/SC).'
-                  : 'This card is not an eUICC / eSIM. Ordinary USIM cards cannot be managed here.'}
+                  ? tx("esim.clickLoadToReadChipInfoFromThisCard")
+                  : tx("esim.thisCardIsNotAnEuiccEsimOrdinaryUsim")}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
@@ -609,16 +598,16 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
                       {se.eid || '—'}
                       {se.eid && (
                         <button className="btn btn-ghost" style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
-                          onClick={() => copyText(se.eid, showToast)}>Copy</button>
+                          onClick={() => copyText(se.eid, showToast)}>{tx("esim.copy")}</button>
                       )}
                     </div>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>Storage remaining</div>
+                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>{tx("esim.storageRemaining3")}</div>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontWeight: 600 }}>
                     {ses.map((se, i) => (
-                      <span key={se.id}>SE{i + 1}: {formatBytes(se.freeSpace)}</span>
+                      <span key={se.id}>{tx("esim.se2", {value1: i + 1, value2: formatBytes(se.freeSpace)})}</span>
                     ))}
                   </div>
                 </div>
@@ -631,23 +620,23 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
                     {ses[0]?.eid || '—'}
                     {ses[0]?.eid && (
                       <button className="btn btn-ghost" style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
-                        onClick={() => copyText(ses[0].eid, showToast)}>Copy</button>
+                        onClick={() => copyText(ses[0].eid, showToast)}>{tx("esim.copy")}</button>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>Default SM-DP+</div>
+                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>{tx("esim.defaultSmDp")}</div>
                   <div>{ses[0]?.defaultDpAddress || ses[0]?.chip?.defaultDpAddress || '—'}</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>Free NVM</div>
+                  <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>{tx("esim.freeNvm")}</div>
                   <div>{formatBytes(ses[0]?.freeSpace ?? ses[0]?.chip?.freeNonVolatileMemory)}</div>
                 </div>
               </div>
             )}
             <div>
-              <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>IMEI for download</div>
-              <div>{imeiDefault || '— (lpac default TAC)'}</div>
+              <div style={{ color: 'var(--text-mute)', fontSize: 11 }}>{tx("esim.imeiForDownload")}</div>
+              <div>{imeiDefault || tx("esim.lpacDefaultTac")}</div>
             </div>
           </div>
         )}
@@ -655,18 +644,18 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
 
       <div className="card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700 }}>Profiles</div>
-          <div style={{ fontSize: 12, color: 'var(--text-mute)' }}>{profiles.length} profile(s)</div>
+          <div style={{ fontWeight: 700 }}>{tx("esim.profiles")}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-mute)' }}>{tx('esim.profileCount', {count: profiles.length})}</div>
         </div>
         {!profiles.length ? (
           <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>
             {loading
-              ? 'Reading…'
+              ? tx("esim.reading")
               : !loaded
-                ? 'Click Load to list profiles.'
+                ? tx("esim.clickLoadToListProfiles")
                 : hasEuicc
-                  ? 'No profiles on this eUICC.'
-                  : 'No profiles to show.'}
+                  ? tx("esim.noProfilesOnThisEuicc")
+                  : tx("esim.noProfilesToShow")}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -685,7 +674,7 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
                     </div>
                   )}
                   {!seProfiles.length ? (
-                    <div style={{ color: 'var(--text-mute)', fontSize: 13, marginBottom: dual ? 8 : 0 }}>No profiles on this SE.</div>
+                    <div style={{ color: 'var(--text-mute)', fontSize: 13, marginBottom: dual ? 8 : 0 }}>{tx("esim.noProfilesOnThisSe")}</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {seProfiles.map((p) => {
@@ -720,27 +709,21 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
                             <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               {!enabled && (
                                 <button className="btn btn-primary" disabled={!!busyOp || lineRunning}
-                                  onClick={() => runProfileOp('Enable', () => api.esimEnable(p.iccid, target))}>
-                                  Enable
-                                </button>
+                                  onClick={() => runProfileOp('Enable', () => api.esimEnable(p.iccid, target))}>{tx("esim.enable")}</button>
                               )}
                               {enabled && (
                                 <button className="btn btn-ghost" disabled={!!busyOp || lineRunning}
-                                  onClick={() => runProfileOp('Disable', () => api.esimDisable(p.iccid, target))}>
-                                  Disable
-                                </button>
+                                  onClick={() => runProfileOp('Disable', () => api.esimDisable(p.iccid, target))}>{tx("esim.disable")}</button>
                               )}
                               <button className="btn btn-ghost" disabled={!!busyOp || lineRunning}
-                                onClick={() => setRenameTarget({ se, profile: p })}>
-                                Rename
-                              </button>
+                                onClick={() => setRenameTarget({ se, profile: p })}>{tx("esim.rename")}</button>
                               <button className="btn btn-ghost" disabled={!!busyOp || lineRunning}
                                 onClick={() => {
-                                  if (!confirm(`Delete profile ${p.iccid}?`)) return
+                                  if (!confirm(tx("esim.deleteProfileValue0", {
+  value0: p.iccid
+}))) return
                                   runProfileOp('Delete', () => api.esimDelete(p.iccid, target))
-                                }}>
-                                Delete
-                              </button>
+                                }}>{tx("esim.delete")}</button>
                             </div>
                           </div>
                         )
@@ -756,26 +739,24 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
 
       <div className="card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700 }}>Notifications</div>
+          <div style={{ fontWeight: 700 }}>{tx("esim.notifications")}</div>
           <button className="btn btn-ghost" disabled={!!busyOp || lineRunning || !notifications.length}
             onClick={() => runProfileOp('Process notifications', async () => {
               for (const se of ses) {
                 if (!(se.notifications || []).length) continue
                 await api.esimNotificationsProcess(seTarget(reader, se))
               }
-            })}>
-            Process all
-          </button>
+            })}>{tx("esim.processAll")}</button>
         </div>
         {!notifications.length ? (
           <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>
             {loading
-              ? 'Reading…'
+              ? tx("esim.reading")
               : !loaded
-                ? 'Click Load to list notifications.'
+                ? tx("esim.clickLoadToListNotifications")
                 : hasEuicc
-                  ? 'No pending notifications.'
-                  : 'No notifications to show.'}
+                  ? tx("esim.noPendingNotifications")
+                  : tx("esim.noNotificationsToShow")}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -798,20 +779,16 @@ export default function Esim({ cards, instances, refresh, subscribe, showToast }
                           border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px', fontSize: 13,
                         }}>
                           <div>
-                            <div style={{ fontWeight: 600 }}>#{n.seqNumber ?? n.seq} · {n.profileManagementOperation || n.operation || 'notify'}</div>
+                            <div style={{ fontWeight: 600 }}>#{n.seqNumber ?? n.seq} · {n.profileManagementOperation || n.operation || tx("esim.notify")}</div>
                             <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>
                               {n.iccid || '—'} · {n.notificationAddress || n.address || ''}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button className="btn btn-ghost" disabled={!!busyOp || lineRunning}
-                              onClick={() => runProfileOp('Process', () => api.esimNotificationsProcess(target))}>
-                              Send
-                            </button>
+                              onClick={() => runProfileOp('Process', () => api.esimNotificationsProcess(target))}>{tx("esim.send")}</button>
                             <button className="btn btn-ghost" disabled={!!busyOp || lineRunning}
-                              onClick={() => runProfileOp('Remove', () => api.esimNotificationRemove(n.seqNumber ?? n.seq, seTarget(reader, se)))}>
-                              Remove
-                            </button>
+                              onClick={() => runProfileOp('Remove', () => api.esimNotificationRemove(n.seqNumber ?? n.seq, seTarget(reader, se)))}>{tx("esim.remove")}</button>
                           </div>
                         </div>
                       )

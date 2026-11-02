@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+import { tx, notice, statusLabel, formatDate } from '../i18n/index.js'
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '../api.js'
 import { Softphone as Phone } from '../softphone.js'
@@ -10,6 +12,7 @@ const KEYS = [['1', ''], ['2', 'ABC'], ['3', 'DEF'], ['4', 'GHI'], ['5', 'JKL'],
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 function Avatar({ label, color = 'var(--primary)', size = 96 }) {
+  useTranslation()
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: color + '22',
       border: `2px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -18,6 +21,7 @@ function Avatar({ label, color = 'var(--primary)', size = 96 }) {
 }
 
 function RoundBtn({ icon, label, color, bg, onClick, active }) {
+  useTranslation()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
       <button onClick={onClick} style={{
@@ -25,13 +29,14 @@ function RoundBtn({ icon, label, color, bg, onClick, active }) {
         border: '1px solid ' + (active ? color : 'var(--border-strong)'),
         background: bg || (active ? color + '22' : 'var(--hover)'),
         color: active ? color : 'var(--text-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{icon}</button>
+      }} aria-label={label}>{icon}</button>
       <span style={{ fontSize: 11, color: 'var(--text-mute)' }}>{label}</span>
     </div>
   )
 }
 
 export default function Softphone({ selected, subscribe, instances, cards, setSelected, showToast }) {
+  useTranslation()
   const id = selected?.id
   const [prov, setProv] = useState(null)
   const [reg, setReg] = useState('idle')
@@ -78,24 +83,26 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
 
   const deleteSelectedCalls = async () => {
     if (!callSel.size) return
-    if (!confirm(`Delete ${callSel.size} selected call${callSel.size > 1 ? 's' : ''}?`)) return
+    if (!confirm(tx('softphone.deleteSelected', {
+  count: callSel.size
+}))) return
     const forId = id
     try {
       await api.deleteCalls(forId, { ids: [...callSel] })
-      setCallSelMode(false); setCallSel(new Set()); reloadIfSame(forId); toast('Calls deleted')
-    } catch (e) { toast('Delete failed: ' + e.message) }
+      setCallSelMode(false); setCallSel(new Set()); reloadIfSame(forId); toast(notice("softphone.callsDeleted"))
+    } catch (e) { toast(notice("softphone.deleteFailedValue0",{value0:e.message})) }
   }
   const deleteOneCall = async (cid, e) => {
     if (e) e.stopPropagation()
     const forId = id
-    try { await api.deleteCalls(forId, { ids: [cid] }); reloadIfSame(forId) } catch (e2) { toast('Delete failed: ' + e2.message) }
+    try { await api.deleteCalls(forId, { ids: [cid] }); reloadIfSame(forId) } catch (e2) { toast(notice("softphone.deleteFailedValue0",{value0:e2.message})) }
   }
   const clearAllCalls = async () => {
     if (!calls.length) return
-    if (!confirm('Clear the entire call history for this line?')) return
+    if (!confirm(tx("softphone.clearTheEntireCallHistoryForThisLine"))) return
     const forId = id
-    try { await api.deleteCalls(forId, { all: true }); setCallSelMode(false); setCallSel(new Set()); reloadIfSame(forId); toast('Call history cleared') }
-    catch (e) { toast('Delete failed: ' + e.message) }
+    try { await api.deleteCalls(forId, { all: true }); setCallSelMode(false); setCallSel(new Set()); reloadIfSame(forId); toast(notice("softphone.callHistoryCleared")) }
+    catch (e) { toast(notice("softphone.deleteFailedValue0",{value0:e.message})) }
   }
 
   // provisioning + connect (only while this page is mounted => only listens for incoming here)
@@ -221,13 +228,13 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
   if (!id) return (
     <div>
       <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} />
-      <div style={{ color: 'var(--text-dim)' }}>Select a SIM / line to use the softphone.</div>
+      <div style={{ color: 'var(--text-dim)' }}>{tx("softphone.selectASimLineToUseTheSoftphone")}</div>
     </div>
   )
 
   const regColor = reg === 'registered' ? GREEN : reg === 'failed' || reg === 'disconnected' ? RED : '#eab308'
   const inCall = call && (call.state === 'active' || call.state === 'calling' || call.state === 'ringing' || call.state === 'incoming' || call.state === 'ended')
-  const endLabel = (c) => c === 'Rejected' ? 'Call declined' : c === 'Busy' ? 'Busy' : c === 'Canceled' || c === 'Canceled/Rejected' ? 'Call cancelled' : 'Call ended'
+  const endLabel = (c) => c === 'Rejected' ? tx("softphone.callDeclined") : c === 'Busy' ? tx('softphone.busy') : c === 'Canceled' || c === 'Canceled/Rejected' ? tx("softphone.callCancelled") : tx("softphone.callEnded")
 
   // Google-Voice-style incoming-call overlay (prominent, full-panel)
   const IncomingOverlay = call?.state === 'incoming' ? (
@@ -235,21 +242,21 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
       backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="card" style={{ padding: 40, width: 380, textAlign: 'center',
         boxShadow: '0 20px 60px rgba(0,0,0,.6)', animation: 'none' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>Incoming call</div>
+        <div style={{ fontSize: 13, color: 'var(--text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>{tx("softphone.incomingCall")}</div>
         <div style={{ margin: '22px 0' }}><Avatar label={call.number} color={GREEN} size={110} /></div>
-        <div className="mono" style={{ fontSize: 26, fontWeight: 800 }}>{call.number || 'Unknown'}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 6 }}>{selected?.name || 'VoWiFi line'}</div>
+        <div className="mono" style={{ fontSize: 26, fontWeight: 800 }}>{call.number && call.number !== 'Unknown' ? call.number : tx("softphone.unknown")}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 6 }}>{selected?.name || tx("softphone.vowifiLine")}</div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 56, marginTop: 34 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <button onClick={decline} style={{ width: 68, height: 68, borderRadius: '50%', border: 'none',
+            <button aria-label={tx("softphone.decline")} onClick={decline} style={{ width: 68, height: 68, borderRadius: '50%', border: 'none',
               cursor: 'pointer', fontSize: 26, background: RED, color: '#fff' }}>✕</button>
-            <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>Decline</span>
+            <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>{tx("softphone.decline")}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <button onClick={answer} style={{ width: 68, height: 68, borderRadius: '50%', border: 'none',
+            <button aria-label={tx("softphone.answer")} onClick={answer} style={{ width: 68, height: 68, borderRadius: '50%', border: 'none',
               cursor: 'pointer', fontSize: 26, background: GREEN, color: '#fff',
               boxShadow: `0 0 0 0 ${GREEN}`, animation: 'ringpulse 1.4s infinite' }}>✆</button>
-            <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>Answer</span>
+            <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>{tx("softphone.answer")}</span>
           </div>
         </div>
       </div>
@@ -266,12 +273,12 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
       </div>
       <div className="mobile-softphone-tabs">
         <button type="button" className={`btn ${mobilePane === 'phone' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setMobilePane('phone')}>Phone</button>
+          onClick={() => setMobilePane('phone')}>{tx("softphone.phone")}</button>
         <button type="button" className={`btn ${mobilePane === 'history' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setMobilePane('history')}>Recent</button>
-        <div className="mobile-reg" style={{ color: regColor }} title={reg}>
+          onClick={() => setMobilePane('history')}>{tx("softphone.recent")}</button>
+        <div className="mobile-reg" style={{ color: regColor }} title={statusLabel('registration', reg)}>
           <span style={{ width: 7, height: 7, borderRadius: 999, background: regColor, flexShrink: 0 }} />
-          <span>{reg}</span>
+          <span>{statusLabel('registration', reg)}</span>
         </div>
       </div>
       <div className={`split-pane softphone ${mobilePane === 'history' ? 'is-detail' : 'is-list'}`}
@@ -281,16 +288,14 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
       {/* ---- Phone panel (Google-Voice style) ---- */}
       <div className="card pane-list softphone-phone" style={{ padding: 24, minHeight: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div className="softphone-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexShrink: 0 }}>
-          <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Softphone</div>
+          <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>{tx("softphone.softphone")}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: regColor }}>
-            <span style={{ width: 8, height: 8, borderRadius: 999, background: regColor }} />{reg}
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: regColor }} />{statusLabel('registration', reg)}
           </div>
         </div>
 
         {!prov?.enabled && (
-          <div style={{ color: '#f97316', fontSize: 13, margin: '12px 0' }}>
-            WebRTC is disabled for this SIM. Enable it in SIM Config (needs HTTPS/TLS) to use the browser phone.
-          </div>
+          <div style={{ color: '#f97316', fontSize: 13, margin: '12px 0' }}>{tx("softphone.webrtcIsDisabledForThisSimEnableItIn")}</div>
         )}
 
         {/* ===== INCOMING handled by full-screen overlay above ===== */}
@@ -301,10 +306,10 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
             <Avatar label={call.number} />
             <div>
               <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{call.number}</div>
-              <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 4 }}>{call.state === 'ringing' ? 'Ringing…' : 'Calling…'}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 4 }}>{call.state === 'ringing' ? tx("softphone.ringing") : tx("softphone.calling")}</div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-              <RoundBtn icon="✕" label="End" color="#fff" bg={RED} onClick={hangup} />
+              <RoundBtn icon="✕" label={tx("softphone.end")} color="#fff" bg={RED} onClick={hangup} />
             </div>
           </div>
         )}
@@ -314,9 +319,9 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
           <div className="softphone-active" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', justifyContent: keypad ? 'flex-start' : 'center', textAlign: 'center', gap: 12, paddingBottom: 8 }}>
             {!keypad && <Avatar label={call.number} color={GREEN} size={84} />}
             <div style={{ flexShrink: 0 }}>
-              <div className="mono" style={{ fontSize: keypad ? 16 : 20, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{call.number || 'Unknown'}</div>
+              <div className="mono" style={{ fontSize: keypad ? 16 : 20, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{call.number && call.number !== 'Unknown' ? call.number : tx("softphone.unknown")}</div>
               <div style={{ fontSize: 15, color: GREEN, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{fmtDur(dur)}</div>
-              {recording && <div style={{ fontSize: 12, color: RED, marginTop: 2 }}>● Recording</div>}
+              {recording && <div style={{ fontSize: 12, color: RED, marginTop: 2 }}>{tx("softphone.recording")}</div>}
             </div>
             {keypad && (
               <div style={{ width: '100%', maxWidth: 240, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
@@ -325,7 +330,7 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
                   background: 'var(--surface-2, rgba(255,255,255,0.06))', border: '1px solid var(--border, rgba(255,255,255,0.12))',
                   fontSize: 20, letterSpacing: 2, textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap',
                   direction: 'rtl', color: dtmfSeq ? 'var(--text)' : 'var(--text-mute)' }}>
-                  {dtmfSeq || 'Type or tap keys'}
+                  {dtmfSeq || tx("softphone.typeOrTapKeys")}
                 </div>
                 <div className="dtmf-pad">
                   {KEYS.map(([k]) => (
@@ -336,12 +341,12 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 22, marginTop: 4, flexShrink: 0 }}>
-              <RoundBtn icon={muted ? '🔇' : '🎙'} label={muted ? 'Unmute' : 'Mute'} color="#60a5fa" onClick={toggleMute} active={muted} />
-              <RoundBtn icon="⌨" label="Keypad" color="#a78bfa" onClick={() => setKeypad((v) => !v)} active={keypad} />
-              <RoundBtn icon="⏺" label={recording ? 'Stop' : 'Record'} color={RED} onClick={toggleRecord} active={recording} />
+              <RoundBtn icon={muted ? '🔇' : '🎙'} label={muted ? tx("softphone.unmute") : tx("softphone.mute")} color="#60a5fa" onClick={toggleMute} active={muted} />
+              <RoundBtn icon="⌨" label={tx("softphone.keypad")} color="#a78bfa" onClick={() => setKeypad((v) => !v)} active={keypad} />
+              <RoundBtn icon="⏺" label={recording ? tx("softphone.stop") : tx("softphone.record")} color={RED} onClick={toggleRecord} active={recording} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2, flexShrink: 0 }}>
-              <RoundBtn icon="✕" label="Hang up" color="#fff" bg={RED} onClick={hangup} />
+              <RoundBtn icon="✕" label={tx("softphone.hangUp")} color="#fff" bg={RED} onClick={hangup} />
             </div>
           </div>
         )}
@@ -350,7 +355,7 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
         {call?.state === 'ended' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center', gap: 12 }}>
             <Avatar label={call.number} color={call.endCause === 'Rejected' ? RED : 'var(--text-mute)'} />
-            <div className="mono" style={{ fontSize: 20, fontWeight: 700 }}>{call.number || 'Unknown'}</div>
+            <div className="mono" style={{ fontSize: 20, fontWeight: 700 }}>{call.number && call.number !== 'Unknown' ? call.number : tx("softphone.unknown")}</div>
             <div style={{ fontSize: 14, color: call.endCause === 'Rejected' ? RED : 'var(--text-mute)' }}>{endLabel(call.endCause)}</div>
           </div>
         )}
@@ -358,7 +363,7 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
         {/* ===== DIALER (idle) ===== */}
         {!inCall && (
           <div className="softphone-idle" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <input value={num} onChange={(e) => setNum(e.target.value)} placeholder="Enter a number"
+            <input value={num} onChange={(e) => setNum(e.target.value)} placeholder={tx("softphone.enterANumber")}
               className="mono softphone-num" style={{ fontSize: 24, textAlign: 'center', margin: '10px 0 16px', letterSpacing: 1, border: 'none', background: 'transparent', minHeight: 48 }} />
             <div className="dial-pad">
               {KEYS.map(([k, sub]) => (
@@ -389,37 +394,37 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
       {/* ---- Recent calls ---- */}
       <div className="card pane-detail softphone-history" style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Recent calls</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{tx("softphone.recentCalls")}</div>
           {calls.length > 0 && (
             callSelMode ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>{callSel.size} selected</span>
+                <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>{tx("softphone.selected", {size: callSel.size})}</span>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: RED }}
-                  disabled={!callSel.size} onClick={deleteSelectedCalls}>Delete</button>
+                  disabled={!callSel.size} onClick={deleteSelectedCalls}>{tx("softphone.delete")}</button>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                  onClick={() => { setCallSelMode(false); setCallSel(new Set()) }}>Cancel</button>
+                  onClick={() => { setCallSelMode(false); setCallSel(new Set()) }}>{tx("softphone.cancel")}</button>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                  onClick={() => setCallSelMode(true)}>Select</button>
+                  onClick={() => setCallSelMode(true)}>{tx("softphone.select")}</button>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: RED }}
-                  onClick={clearAllCalls}>Clear all</button>
+                  onClick={clearAllCalls}>{tx("softphone.clearAll")}</button>
               </div>
             )
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflow: 'auto' }}>
-          {calls.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-mute)' }}>No calls yet.</div>}
+          {calls.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-mute)' }}>{tx("softphone.noCallsYet")}</div>}
           {calls.map((c) => {
             const s = (c.status || '').toLowerCase()
             const color = s === 'answered' ? GREEN : (s === 'blocked' || s === 'rejected' || s === 'busy' || s === 'failed') ? RED
-              : (s === 'no answer' || s === 'cancelled' || s === 'missed') ? '#eab308' : 'var(--text-dim)'
-            const dlabel = c.direction === 'in' ? '↙ Incoming' : '↗ Outgoing'
+              : (s === 'no answer' || s === 'cancelled' || s === 'missed') ? '#eab308' : "var(--text-dim)"
+            const dlabel = c.direction === 'in' ? tx("softphone.incoming") : tx("softphone.outgoing")
             const peer = (c.peer || '').trim()
-            const peerLabel = peer || 'Private number'
+            const peerLabel = peer || tx("softphone.privateNumber")
             const checked = callSel.has(c.id)
-            const when = c.start_ts ? new Date(Number(c.start_ts) * 1000).toLocaleString() : ''
+            const when = c.start_ts ? formatDate(Number(c.start_ts) * 1000) : ''
             return (
               <div key={c.id} onClick={() => callSelMode && toggleCallSel(c.id)} className="hover-row"
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
@@ -431,21 +436,21 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
                   <div style={{ fontSize: 11, color: 'var(--text-mute)' }}>{dlabel}{when ? ` · ${when}` : ''}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ color, fontWeight: 600, textTransform: 'capitalize' }}>{c.status || 'ringing'}</span>
+                  <span style={{ color, fontWeight: 600 }}>{statusLabel('callStatus', c.status || tx("softphone.ringing2"))}</span>
                   {!callSelMode && <>
                     <button className="btn btn-ghost" style={{ padding: '5px 10px' }}
                       disabled={reg !== 'registered' || !peer} onClick={(e) => {
                         e.stopPropagation(); phone.current?.unlockAudio(); setNum(peer); phone.current?.call(peer)
-                      }}>Call</button>
+                      }}>{tx("softphone.call")}</button>
                     {peer && <button className="btn btn-ghost" onClick={async (e) => {
                       e.stopPropagation()
                       try {
                         await api.blocking('POST', '/rules', { scope: String(id), kind: 'block', number: peer,
                           match_type: 'exact', description: 'Added from call history', enabled: true })
-                        showToast('Number added to blacklist for this line')
+                        showToast(notice("softphone.numberAddedToBlacklistForThisLine"))
                       } catch (err) { showToast(err.message) }
-                    }}>Block this number</button>}
-                    <button className="row-del" title="Delete this call" aria-label="Delete this call"
+                    }}>{tx("softphone.blockThisNumber")}</button>}
+                    <button className="row-del" title={tx("softphone.deleteThisCall")} aria-label={tx("softphone.deleteThisCall")}
                       onClick={(e) => deleteOneCall(c.id, e)}>🗑</button>
                   </>}
                 </div>

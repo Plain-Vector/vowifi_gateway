@@ -1,39 +1,43 @@
+import { useTranslation } from 'react-i18next'
+import { tx, notice, renderNotice, statusLabel, errorNotice } from '../i18n/index.js'
 import React, { useState } from 'react'
 import { api } from '../api.js'
 import ProvisionModal from './ProvisionModal.jsx'
 import SipInfoModal from './SipInfoModal.jsx'
 
 function StateBadge({ st }) {
+  useTranslation()
   const state = st?.state || 'STOPPED'
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
       <span className={`dot st-${state}`} />
-      {st?.label || 'Unknown'}
+      {statusLabel('lineStatus', st?.state, st?.label || tx('dashboard.unknown'))}
     </span>
   )
 }
 
 const STEPS = [
-  ['NO_CARD', 'SIM'],
-  ['EPDG_UNRESOLVED', 'ePDG DNS'],
-  ['TUNNEL_DOWN', 'Tunnel'],
-  ['REGISTERING', 'IMS reg'],
-  ['OK', 'Working'],
+  ['NO_CARD', 'dashboard.stepNO_CARD'],
+  ['EPDG_UNRESOLVED', 'dashboard.stepEPDG_UNRESOLVED'],
+  ['TUNNEL_DOWN', 'dashboard.stepTUNNEL_DOWN'],
+  ['REGISTERING', 'dashboard.stepREGISTERING'],
+  ['OK', 'dashboard.stepOK'],
 ]
 const RANK = { STOPPED: -1, NO_CARD: 0, PIN_PROBLEM: 0, EPDG_UNRESOLVED: 1, TUNNEL_DOWN: 2, REGISTERING: 3, OK: 4 }
 
 function Pipeline({ st }) {
+  useTranslation()
   const rank = RANK[st?.state] ?? -1
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
       {STEPS.map(([k, label], idx) => {
         const done = rank > idx
         const cur = rank === idx
-        const bg = done ? '#22c55e' : cur ? (st.state === 'OK' ? '#22c55e' : '#eab308') : 'var(--border-strong)'
+        const bg = done ? '#22c55e' : cur ? (st.state === 'OK' ? '#22c55e' : '#eab308') : "var(--border-strong)"
         return (
           <div key={k} style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ height: 5, borderRadius: 3, background: bg }} />
-            <div style={{ fontSize: 10, color: 'var(--text-mute)', marginTop: 4 }}>{label}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-mute)', marginTop: 4 }}>{tx(label)}</div>
           </div>
         )
       })}
@@ -60,7 +64,7 @@ function buildReaders(cards, instances) {
 }
 
 function readerTitle(r) {
-  const port = r.index != null ? `Reader ${r.index}` : 'Reader'
+  const port = r.index != null ? tx("dashboard.reader", {value1: r.index}) : 'Reader'
   // "Alcor Link AK9563 00 00" — keep the human name after the port label
   return r.name ? `${port} · ${r.name}` : port
 }
@@ -72,6 +76,7 @@ const PIN_RE = /^\d{4,8}$/  // basic client-side validity: 4–8 digits, numeric
 //    Entering a correct PIN unlocks IMSI+SMSC on the backend and the card refreshes.
 //  - READY (PIN disabled, or unlocked): show identity + SMSC, offer Provision.
 function UnprovisionedCard({ card, refresh, onProvision }) {
+  useTranslation()
   const [pinInput, setPinInput] = useState('')
   const [pin, setPin] = useState('')          // remembered correct PIN, forwarded to provisioning
   const [busy, setBusy] = useState(false)
@@ -82,13 +87,15 @@ function UnprovisionedCard({ card, refresh, onProvision }) {
 
   const unlock = async (e) => {
     e.stopPropagation()
-    if (!pinOk) { setErr('PIN must be 4–8 digits.'); return }
+    if (!pinOk) { setErr(notice("dashboard.pinMustBe48Digits")); return }
     setBusy(true); setErr('')
     try {
       const r = await api.verifyPin(pinInput, card.index, card.name)
       if (r.ok) { setPin(pinInput); await refresh() }   // card entry updates -> re-renders as READY
-      else setErr(`${r.error}${r.tries != null ? ` — ${r.tries} tries left` : ''}`)
-    } catch (e2) { setErr(e2.message) }
+      else setErr(notice("dashboard.value0Value1",{value0:r.error,value1:r.tries != null ? notice("dashboard.triesLeft", {
+  value1: r.tries
+}) : ''}))
+    } catch (e2) { setErr(errorNotice(e2)) }
     setBusy(false)
   }
 
@@ -103,22 +110,22 @@ function UnprovisionedCard({ card, refresh, onProvision }) {
       <div onClick={(e) => e.stopPropagation()}>
         <div style={{ marginTop: 14, fontSize: 13, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px', color: 'var(--text-soft)' }}>
           {row('ICCID', card.iccid || '—', true)}
-          {row('Status', <span style={{ color: '#eab308' }}>🔒 SIM locked — PIN required</span>)}
-          {card.pin_tries != null && row('PIN tries', card.pin_tries)}
+          {row('Status', <span style={{ color: '#eab308' }}>{tx("dashboard.simLockedPinRequired")}</span>)}
+          {card.pin_tries != null && row(tx("dashboard.pinTries"), card.pin_tries)}
         </div>
         <div style={{ marginTop: 14 }}>
-          <label style={{ fontSize: 12, color: 'var(--text-mute)' }}>Enter SIM PIN (CHV1)</label>
+          <label style={{ fontSize: 12, color: 'var(--text-mute)' }}>{tx("dashboard.enterSimPinChv1")}</label>
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <input type="password" inputMode="numeric" value={pinInput} maxLength={8}
               onChange={(e) => { setPinInput(e.target.value.replace(/[^0-9]/g, '')); setErr('') }}
               onKeyDown={(e) => { if (e.key === 'Enter' && pinOk) unlock(e) }}
-              placeholder="4–8 digits" className="mono" style={{ flex: 1 }} />
+              placeholder={tx("dashboard.48Digits")} className="mono" style={{ flex: 1 }} />
             <button className="btn btn-primary" disabled={busy || !pinOk} onClick={unlock}>
-              {busy ? 'Unlocking…' : 'Unlock'}
+              {busy ? tx("dashboard.unlocking") : tx("dashboard.unlock")}
             </button>
           </div>
-          {pinInput && !pinOk && <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 6 }}>PIN must be 4–8 digits.</div>}
-          {err && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{err}</div>}
+          {pinInput && !pinOk && <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 6 }}>{tx("dashboard.pinMustBe48Digits")}</div>}
+          {err && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{renderNotice(err)}</div>}
         </div>
       </div>
     )
@@ -133,14 +140,12 @@ function UnprovisionedCard({ card, refresh, onProvision }) {
         {row('IMSI', card.imsi || '—', true)}
         {card.mcc && card.mnc && row('Carrier', `${card.mcc}-${card.mnc}`)}
         {row('SMSC', card.smsc
-          ? <span className="mono">{card.smsc} <span style={{ color: 'var(--text-mute)' }}>· from SIM</span></span>
-          : <span style={{ color: '#eab308' }}>⚠ could not read from SIM — enter manually when provisioning</span>)}
-        {row('PIN', card.pin_enabled === false ? 'disabled' : 'unlocked ✓')}
+          ? <span className="mono">{card.smsc} <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.fromSim")}</span></span>
+          : <span style={{ color: '#eab308' }}>{tx("dashboard.couldNotReadFromSimEnterManuallyWhenProvisioning")}</span>)}
+        {row('PIN', card.pin_enabled === false ? tx("dashboard.disabled") : tx("dashboard.unlocked"))}
       </div>
       <button className="btn btn-primary" style={{ marginTop: 16 }}
-        onClick={(e) => { e.stopPropagation(); onProvision(pin) }}>
-        Provision this SIM{smscMissing ? ' (enter SMSC)' : ''}
-      </button>
+        onClick={(e) => { e.stopPropagation(); onProvision(pin) }}>{tx("dashboard.provisionThisSim", {value1: smscMissing ? tx("dashboard.enterSmsc") : ''})}</button>
     </div>
   )
 }
@@ -148,13 +153,14 @@ function UnprovisionedCard({ card, refresh, onProvision }) {
 // A PIN prompt shown when starting a line whose card needs a PIN we don't have (deleted,
 // or the saved one no longer verifies). Verifies + saves the PIN, then starts the line.
 function StartPinModal({ inst, tries, error, onClose, onDone }) {
+  useTranslation()
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(error || '')
   const ok = PIN_RE.test(pin)
 
   const submit = async () => {
-    if (!ok) { setErr('PIN must be 4–8 digits.'); return }
+    if (!ok) { setErr(notice("dashboard.pinMustBe48Digits")); return }
     setBusy(true); setErr('')
     try {
       await api.start(inst.id, { pin })
@@ -164,9 +170,9 @@ function StartPinModal({ inst, tries, error, onClose, onDone }) {
       const code = e?.data?.detail?.code
       if (code === 'pin_invalid' || /PIN error/i.test(e.message)) {
         const t = e?.data?.detail?.tries
-        setErr(`Wrong PIN${t != null ? ` — ${t} tries left` : ''}.`)
-      } else if (code === 'no_card') setErr('SIM card is not present in the reader.')
-      else setErr(e.message)
+        setErr(t != null ? notice('dashboard.wrongPinWithTries', {count: t}) : notice('dashboard.wrongPinPlain'))
+      } else if (code === 'no_card') setErr(notice("dashboard.simCardIsNotPresentInTheReader"))
+      else setErr(errorNotice(e))
       setPin('')
     }
     setBusy(false)
@@ -176,21 +182,18 @@ function StartPinModal({ inst, tries, error, onClose, onDone }) {
     <div style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
       onClick={onClose}>
       <div className="card" style={{ padding: 24, width: 380, maxWidth: '92vw' }} onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Enter SIM PIN</h2>
-        <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14, lineHeight: 1.6 }}>
-          {inst?.name || `Line ${inst?.id}`} needs its SIM PIN to start (no valid saved PIN).
-          The PIN is verified against the card, saved, and used to bring the line up.
-        </div>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{tx("dashboard.enterSimPin")}</h2>
+        <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14, lineHeight: 1.6 }}>{tx("dashboard.needsItsSimPinToStartNoValidSaved", {value1: inst?.name || tx("dashboard.line", {value1: inst?.id})})}</div>
         <input type="password" inputMode="numeric" className="mono" value={pin} maxLength={8} autoFocus
           onChange={(e) => { setPin(e.target.value.replace(/[^0-9]/g, '')); setErr('') }}
           onKeyDown={(e) => { if (e.key === 'Enter' && ok) submit() }}
-          placeholder="4–8 digits" style={{ width: '100%' }} />
-        {tries != null && !err && <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 6 }}>{tries} tries left.</div>}
-        {err && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{err}</div>}
+          placeholder={tx("dashboard.48Digits")} style={{ width: '100%' }} />
+        {tries != null && !err && <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 6 }}>{tx("dashboard.triesLeft3", {tries: tries})}</div>}
+        {err && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{renderNotice(err)}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onClose}>{tx("dashboard.cancel")}</button>
           <button className="btn btn-primary" disabled={busy || !ok} onClick={submit}>
-            {busy ? 'Starting…' : 'Unlock & start'}
+            {busy ? tx("dashboard.starting") : tx("dashboard.unlockStart")}
           </button>
         </div>
       </div>
@@ -199,6 +202,7 @@ function StartPinModal({ inst, tries, error, onClose, onDone }) {
 }
 
 export default function Dashboard({ instances, cards = [], noReaders, cardsKnown, refresh, setSelected, selected, setView, showToast }) {
+  useTranslation()
   const [busy, setBusy] = useState(null)
   const [provision, setProvision] = useState(null)
   const [sipInfo, setSipInfo] = useState(null)
@@ -219,7 +223,7 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
     catch (e) {
       const pe = pinError(e)
       if (pe) setPinPrompt({ inst: instances.find((i) => String(i.id) === String(id)), tries: pe.tries,
-                             error: pe.code === 'pin_invalid' ? 'Saved PIN was wrong — enter it again.' : '' })
+                             error: pe.code === 'pin_invalid' ? tx("dashboard.savedPinWasWrongEnterItAgain") : '' })
       else alert(e.message)
     }
     setBusy(null)
@@ -230,7 +234,7 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
   // Nothing known yet (first /api/cards still in flight) — render nothing instead of
   // flashing a wrong "no readers" message.
   if (!cardsKnown && rows.length === 0) {
-    return <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>Detecting card readers…</div>
+    return <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>{tx("dashboard.detectingCardReaders")}</div>
   }
 
   return (
@@ -240,19 +244,13 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
       {noReaders && (
         <div className="card" style={{ padding: '32px 28px', textAlign: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 36 }}>🔌</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>No PC/SC smart-card reader found</div>
-          <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 8, lineHeight: 1.6, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
-            Connect a USB smart-card reader with your SIM inserted — it is detected automatically
-            and this page updates in real time. Softphone, Messages and SIM Config are disabled
-            until a reader is present.
-          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>{tx("dashboard.noPcScSmartCardReaderFound")}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-mute)', marginTop: 8, lineHeight: 1.6, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>{tx("dashboard.connectAUsbSmartCardReaderWithYourSim")}</div>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(360px,1fr))', gap: 16 }}>
         {!noReaders && rows.length === 0 && (
-          <div className="card" style={{ padding: 24, color: 'var(--text-dim)' }}>
-            No card readers detected. Plug in a PC/SC reader and insert a SIM.
-          </div>
+          <div className="card" style={{ padding: 24, color: 'var(--text-dim)' }}>{tx("dashboard.noCardReadersDetectedPlugInAPcSc")}</div>
         )}
         {rows.map((r) => {
           const inst = r.instance
@@ -270,17 +268,17 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>{readerTitle(r)}</span>
-                    {isSel && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '1px 6px' }}>ACTIVE</span>}
+                    {isSel && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '1px 6px' }}>{tx("dashboard.active")}</span>}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 3 }}>
-                    {inst ? (inst.name || `Line ${inst.id}`) : r.present ? 'Unprovisioned SIM' : 'Empty'}
+                    {inst ? (inst.name || tx("dashboard.line", {value1: inst.id})) : r.present ? tx("dashboard.unprovisionedSim") : tx("dashboard.empty")}
                   </div>
                 </div>
                 {inst
                   ? <StateBadge st={inst.status} />
                   : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: r.present ? '#eab308' : 'var(--text-mute)' }}>
                       <span className={`dot st-${r.present ? 'REGISTERING' : 'NO_CARD'}`} />
-                      {r.present ? 'SIM detected' : 'No SIM card'}
+                      {r.present ? tx("dashboard.simDetected") : tx("dashboard.noSimCard")}
                     </span>}
               </div>
 
@@ -295,36 +293,36 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
                       background: inst.status.state === 'ERROR' ? 'rgba(239,68,68,.12)' : 'rgba(234,179,8,.12)',
                       border: '1px solid ' + (inst.status.state === 'ERROR' ? 'rgba(239,68,68,.45)' : 'rgba(234,179,8,.4)'),
                     }}>
-                      {inst.status.reason}
+                      {statusLabel('reasons', inst.status.reason_code, inst.status.reason)}
                       {inst.status.retry && inst.status.retry.count > 0 && inst.status.state !== 'ERROR' &&
-                        <span style={{ color: 'var(--text-mute)' }}> · attempt {inst.status.retry.count}/{inst.status.retry.max}</span>}
+                        <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.attempt", {count: inst.status.retry.count, max: inst.status.retry.max})}</span>}
                       {inst.status.state === 'ERROR' && setView &&
                         <span> · <a onClick={(e) => { e.stopPropagation(); setSelected(inst.id); setView('logs') }}
-                          style={{ cursor: 'pointer', textDecoration: 'underline' }}>view logs</a></span>}
+                          style={{ cursor: 'pointer', textDecoration: 'underline' }}>{tx("dashboard.viewLogs")}</a></span>}
                     </div>
                   )}
                   <div style={{ marginTop: 16, fontSize: 13, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px', color: 'var(--text-soft)' }}>
-                    <span style={{ color: 'var(--text-mute)' }}>Carrier</span><span>{`${inst.mcc}-${inst.mnc}`}</span>
-                    <span style={{ color: 'var(--text-mute)' }}>Number</span><span className="mono">{d.msisdn || inst.msisdn || '—'}</span>
+                    <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.carrier")}</span><span>{`${inst.mcc}-${inst.mnc}`}</span>
+                    <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.number")}</span><span className="mono">{d.msisdn || inst.msisdn || '—'}</span>
                     <span style={{ color: 'var(--text-mute)' }}>IMSI</span><span className="mono" style={{ fontSize: 11 }}>{inst.imsi || '—'}</span>
                     <span style={{ color: 'var(--text-mute)' }}>ICCID</span><span className="mono" style={{ fontSize: 11 }}>{r.card?.iccid || inst.iccid || '—'}</span>
                     <span style={{ color: 'var(--text-mute)' }}>SMSC</span><span className="mono">{d.smsc || inst.smsc || '—'}</span>
-                    <span style={{ color: 'var(--text-mute)' }}>P-CSCF</span><span className="mono" style={{ fontSize: 11 }}>{d.pcscf || '—'}</span>
-                    <span style={{ color: 'var(--text-mute)' }}>IMS reg</span><span>{d.registration || '—'}</span>
-                    <span style={{ color: 'var(--text-mute)' }}>PIN</span><span>{d.pin?.state || '—'}{d.pin?.tries_left != null ? ` (${d.pin.tries_left} tries)` : ''}</span>
+                    <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.pCscf")}</span><span className="mono" style={{ fontSize: 11 }}>{d.pcscf || '—'}</span>
+                    <span style={{ color: 'var(--text-mute)' }}>{tx("dashboard.imsReg")}</span><span>{d.registration || '—'}</span>
+                    <span style={{ color: 'var(--text-mute)' }}>PIN</span><span>{d.pin?.state || '—'}{d.pin?.tries_left != null ? tx("dashboard.tries", {value1: d.pin.tries_left}) : ''}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     {inst.status?.state === 'STOPPED'
-                      ? <button className="btn btn-primary" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.start(inst.id))}>Start</button>
+                      ? <button className="btn btn-primary" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.start(inst.id))}>{tx("dashboard.start")}</button>
                       : inst.status?.state === 'ERROR'
-                      ? <button className="btn btn-primary" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.reprovision(inst.id))}>Re-provision</button>
-                      : <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.stop(inst.id))}>Stop</button>}
+                      ? <button className="btn btn-primary" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.reprovision(inst.id))}>{tx("dashboard.reProvision")}</button>
+                      : <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.stop(inst.id))}>{tx("dashboard.stop")}</button>}
                     {inst.status?.state !== 'STOPPED' && inst.status?.state !== 'ERROR' &&
-                      <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.register(inst.id))}>Re-register</button>}
+                      <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.register(inst.id))}>{tx("dashboard.reRegister")}</button>}
                     {inst.status?.state !== 'STOPPED' && inst.status?.state !== 'ERROR' &&
-                      <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.reprovision(inst.id))}>Re-provision</button>}
-                    <button className="btn btn-ghost" onClick={() => setSipInfo(inst)}>SIP info</button>
-                    <button className="btn btn-ghost" onClick={() => { setSelected(inst.id); setView && setView('sims') }}>Configure ▸</button>
+                      <button className="btn btn-ghost" disabled={busy === inst.id} onClick={() => act(inst.id, () => api.reprovision(inst.id))}>{tx("dashboard.reProvision")}</button>}
+                    <button className="btn btn-ghost" onClick={() => setSipInfo(inst)}>{tx("dashboard.sipInfo")}</button>
+                    <button className="btn btn-ghost" onClick={() => { setSelected(inst.id); setView && setView('sims') }}>{tx("dashboard.configure")}</button>
                   </div>
                 </>
               )}
@@ -337,9 +335,7 @@ export default function Dashboard({ instances, cards = [], noReaders, cardsKnown
 
               {/* ---- Empty reader ---- */}
               {!inst && !r.present && (
-                <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-mute)' }}>
-                  No SIM card inserted in this reader.
-                </div>
+                <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-mute)' }}>{tx("dashboard.noSimCardInsertedInThisReader")}</div>
               )}
             </div>
           )

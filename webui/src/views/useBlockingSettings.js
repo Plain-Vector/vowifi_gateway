@@ -1,3 +1,4 @@
+import { localizedError, errorNotice } from '../i18n/index.js'
 import { useEffect, useRef, useState } from 'react'
 
 export const providerValues = (p) => ({ auto_update: !!p.auto_update, interval_hours: p.interval_hours,
@@ -20,7 +21,7 @@ export function useBlockingSettings(request, scope) {
       if (id !== epoch.current) return
       const saved = scope === '*' ? server.global : server.override
       setState({ draft: { ...saved }, saved, server, status: 'Saved', error: '' })
-    } catch (e) { if (id === epoch.current) setState(s => ({ ...s, status: 'Error', error: e.message })) }
+    } catch (e) { if (id === epoch.current) setState(s => ({ ...s, status: 'Error', error: errorNotice(e) })) }
   }
   useEffect(() => { setState({ draft: null, saved: null, server: null, status: 'Loading', error: '' }); load(); return () => { ++epoch.current } }, [scope])
   const dirty = state.draft !== null && !same(state.draft, state.saved)
@@ -40,9 +41,9 @@ export function useBlockingSettings(request, scope) {
       const server = await request('GET', '/settings?' + new URLSearchParams({ scope }))
       if (id !== epoch.current) return
       const saved = scope === '*' ? server.global : server.override
-      if (!same(saved, payload)) throw new Error('Server values differ from the submitted settings. Reload and review before saving again.')
+      if (!same(saved, payload)) throw localizedError('errors.readbackMismatch')
       setState({ draft: { ...saved }, saved, server, status: 'Saved', error: '' })
-    } catch (e) { if (id === epoch.current) setState(s => ({ ...s, status: 'Error', error: e.message })) }
+    } catch (e) { if (id === epoch.current) setState(s => ({ ...s, status: 'Error', error: errorNotice(e) })) }
   }
   return { ...state, dirty, edit, save, discard: load }
 }

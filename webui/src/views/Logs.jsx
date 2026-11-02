@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+import { tx, renderNotice, errorNotice } from '../i18n/index.js'
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../api.js'
 import SimSelector from './SimSelector.jsx'
@@ -38,11 +40,12 @@ function ansi(text) {
 }
 
 const TABS = [
-  { id: 'engine', short: 'Engine', full: 'Asterisk / engine' },
-  { id: 'charon', short: 'IKE', full: 'SWu tunnel (IKE)' },
+  { id: 'engine', short: 'logs.engineShort', full: 'logs.engineFull' },
+  { id: 'charon', short: 'logs.ikeShort', full: 'logs.ikeFull' },
 ]
 
 export default function Logs({ selected, instances, cards, setSelected }) {
+  useTranslation()
   const id = selected?.id
   const [logs, setLogs] = useState({ engine: '', charon: '' })
   const [tab, setTab] = useState('engine')
@@ -52,7 +55,7 @@ export default function Logs({ selected, instances, cards, setSelected }) {
   const load = useCallback(async () => {
     if (!id) return
     try { setLogs(await api.logs(id, 400)); setErr('') }
-    catch (e) { setErr(e.message) }
+    catch (e) { setErr(errorNotice(e)) }
   }, [id])
 
   useEffect(() => { load() }, [load])
@@ -62,43 +65,42 @@ export default function Logs({ selected, instances, cards, setSelected }) {
     return () => clearInterval(t)
   }, [auto, load])
 
-  const rendered = useMemo(() => ansi(logs[tab] || '(empty)'), [logs, tab])
+  const rendered = useMemo(() => ansi(logs[tab] || ''), [logs, tab])
 
   if (!id) return (
     <div className="logs-page logs-page-empty">
-      <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} label="Show logs for" />
-      <div style={{ color: 'var(--text-dim)' }}>Select a SIM / line to view its engine and IKE logs.</div>
+      <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} labelKey="lineSelector.logs" />
+      <div style={{ color: 'var(--text-dim)' }}>{tx("logs.selectASimLineToViewItsEngineAnd")}</div>
     </div>
   )
 
   return (
     <div className="logs-page">
       <div className="logs-chrome">
-        <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} label="Show logs for" />
+        <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} labelKey="lineSelector.logs" />
         {err && <div className="logs-err" role="alert">
-          {err}{' '}<button type="button" className="btn btn-ghost logs-small-button" onClick={load}>Retry</button>
+          {renderNotice(err)}{' '}<button type="button" className="btn btn-ghost logs-small-button" onClick={load}>{tx("logs.retry")}</button>
         </div>}
         <div className="logs-toolbar">
-          <div className="logs-tabs" role="tablist" aria-label="Log source">
+          <div className="logs-tabs" role="tablist" aria-label={tx("logs.logSource")}>
             {TABS.map((item) => (
               <button key={item.id} type="button" role="tab" aria-selected={tab === item.id}
                 className={`btn ${tab === item.id ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={() => setTab(item.id)}>
-                <span className="logs-tab-full">{item.full}</span>
-                <span className="logs-tab-short">{item.short}</span>
+                <span className="logs-tab-full">{tx(item.full)}</span>
+                <span className="logs-tab-short">{tx(item.short)}</span>
               </button>
             ))}
           </div>
           <div className="logs-actions">
-            <button type="button" className="btn btn-ghost" onClick={load}>Refresh</button>
+            <button type="button" className="btn btn-ghost" onClick={load}>{tx("logs.refresh")}</button>
             <label className="logs-auto">
-              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> auto
-            </label>
+              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />{tx("logs.auto")}</label>
           </div>
         </div>
       </div>
       <pre className="mono card logs-body" tabIndex={0}>
-        {rendered}
+        {logs[tab] ? rendered : tx('common.empty')}
       </pre>
     </div>
   )
