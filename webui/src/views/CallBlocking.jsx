@@ -13,6 +13,9 @@ export default function CallBlocking({ instances, showToast }) {
   const [rules, setRules] = useState([])
   const [events, setEvents] = useState([])
   const [provider, setProvider] = useState(null)
+  const [database, setDatabase] = useState(null)
+  const [databaseVersion, setDatabaseVersion] = useState('')
+  const [databaseLicense, setDatabaseLicense] = useState('')
   const [form, setForm] = useState(empty)
   const [editId, setEditId] = useState(null)
   const [kind, setKind] = useState('block')
@@ -54,7 +57,14 @@ export default function CallBlocking({ instances, showToast }) {
   async function config(key, value) {
     const next = { ...(scope === '*' ? settings.global : settings.override), [key]: value }
     if (value === null) delete next[key]
-    await run(() => request('PUT', '/settings?' + new URLSearchParams({ scope }), next))
+    if (value !== null) setSettings((previous) => ({ ...previous, effective: { ...previous.effective, [key]: value } }))
+    await run(async () => {
+      setSettings(await request('PUT', '/settings?' + new URLSearchParams({ scope }), next))
+      if (key === 'saracroche' && value === true && provider?.connection?.source === 'remote') {
+        const result = await request('POST', '/providers/saracroche/update')
+        if (!result.ok) showToast(result.error)
+      }
+    })
   }
   const ready = loadedScope === scope
   const effective = ready ? settings?.effective : null
@@ -87,7 +97,6 @@ export default function CallBlocking({ instances, showToast }) {
       {scope !== '*' && <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/settings?' + new URLSearchParams({ scope }), {}))}>Reset all line settings to global</button>}
       {[
         ['arcep', 'Block ARCEP verified automated-calling ranges (optional; may include legitimate services)'],
-        ['saracroche', 'Enable Saracroche matching when an authorized database becomes available'],
         ['block_withheld', 'Block withheld caller IDs'], ['block_unavailable', 'Block unavailable / invalid caller IDs'],
       ].map(([key, label]) => <div key={key} className="blocking-row">
         <label className="blocking-check"><input type="checkbox" disabled={busy} checked={effective[key]} onChange={(e) => config(key, e.target.checked)} />{label}</label>
@@ -98,20 +107,57 @@ export default function CallBlocking({ instances, showToast }) {
       <a href="https://www.arcep.fr/la-regulation/grands-dossiers-thematiques-transverses/la-numerotation.html" target="_blank" rel="noreferrer">ARCEP numbering plan — verified 2 November 2026</a>
     </div>}
     {provider && <div className="card blocking-card">
-      <h2>Saracroche source and automatic updates (global)</h2>
-      <strong>{provider.status === 'access_required' ? 'Access required — download unavailable' : 'Available'}</strong>
+      <h2>Saracroche — optional database</h2>
+      {effective && <label className="blocking-check"><input type="checkbox" role="switch" disabled={busy}
+        checked={effective.saracroche} onChange={(e) => config('saracroche', e.target.checked)} />Enable Saracroche for {scope === '*' ? 'all lines by default' : 'this line'}</label>}
+      {effective && scope !== '*' && Object.hasOwn(settings.override, 'saracroche') && <button className="btn btn-ghost" disabled={busy} onClick={() => config('saracroche', null)}>Inherit global Saracroche setting</button>}
+      <label>Database source<select aria-label="Saracroche source" disabled={busy} value={provider.connection.source} onChange={(e) => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), source: e.target.value }))}><option value="remote">Saracroche server — Android protocol</option><option value="local">Local file import</option></select></label>
+      <strong>{provider.status === 'local_ready' ? 'Local database ready' : provider.status === 'access_required' ? 'No database — remote access required' : 'Remote source available'}</strong>
+      {effective && <p>{!effective.saracroche ? 'Off: Saracroche rules are not applied to this scope.' : !provider.entries ? 'Enabled, but no database is loaded: Saracroche cannot block any calls yet.' : 'Database matching enabled. The selected operation mode controls whether calls are monitored or rejected.'}</p>}
+      <p>Remote source: Saracroche / La bonne patte. Database license: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0 — noncommercial use, attribution and share-alike</a>. Commercial use needs separate terms from Saracroche.</p>
+      <p>Import a phone blocking list in the Android NDJSON format (name and pattern records). Do not import SMS or allow lists here. Importing does not enable Saracroche.</p>
+      {provider.connection.source === 'local' && <form className="blocking-row" onSubmit={(e) => { e.preventDefault(); run(async () => {
+        if (!database || database.size > 64 * 1024 * 1024) throw new Error('Choose a database file up to 64 MiB')
+        const query = new URLSearchParams({ version: databaseVersion, license_info: databaseLicense })
+        const r = await request('POST', '/providers/saracroche/import?' + query, database)
+        showToast(`Imported ${r.entries} rules. Enable Saracroche to apply them.`)
+      }) }}>
+        <input type="file" aria-label="Android database file" accept=".ndjson,.jsonl,application/x-ndjson" onChange={(e) => setDatabase(e.target.files?.[0] || null)} />
+        <input aria-label="Database version" maxLength={128} placeholder="Version (optional)" value={databaseVersion} onChange={(e) => setDatabaseVersion(e.target.value)} />
+        <input aria-label="Database license" maxLength={500} placeholder="Database license / source (if supplied)" value={databaseLicense} onChange={(e) => setDatabaseLicense(e.target.value)} />
+        <button className="btn btn-primary" disabled={busy || !database}>Import database</button>
+      </form>}
       <p>{provider.notice}</p>
-      <div className="blocking-row">
-        <label className="blocking-check"><input type="checkbox" disabled={busy} checked={!!provider.auto_update}
+      {provider.connection.source === 'remote' && <div className="blocking-row">
+        <label className="blocking-check"><input type="checkbox" disabled={busy || !provider.can_auto_update} checked={!!provider.auto_update}
           onChange={(e) => run(() => request('PUT', '/providers/saracroche', { auto_update: e.target.checked, interval_hours: provider.interval_hours }))} />Automatic updates</label>
         <label>Interval (hours)<input type="number" min="1" max="720" value={provider.interval_hours}
           onChange={(e) => setProvider({ ...provider, interval_hours: e.target.value })} /></label>
         <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours) }))}>Save schedule</button>
-        <button className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+        <button className="btn btn-primary" disabled={busy || !provider.can_auto_update || !provider.enabled} onClick={() => run(async () => {
           const r = await request('POST', '/providers/saracroche/update'); showToast(r.ok ? 'Database updated' : r.error)
         })}>Update now</button>
-      </div>
+      </div>}
       <p>Last success: {date(provider.last_success)} · Next attempt: {date(provider.next_update)}<br />Version: {provider.version || '—'} · Entries: {provider.entries} · Failed attempts: {provider.failures}</p>
+      <p>Last database source: {provider.source_mode === 'local' ? 'Local file' : provider.source_mode === 'remote' ? 'Saracroche server' : 'Not connected'} · License: {provider.license || 'Not provided'}{provider.checksum ? ` · SHA-256: ${provider.checksum}` : ''}</p>
+      {!provider.can_auto_update && <p>Local source selected: import a new file to update the database.</p>}
+      {provider.connection.source === 'remote' && <>
+        <label>Country codes (as in Android)<input aria-label="Saracroche country codes" value={provider.connection.country_codes} onChange={(e) => setProvider({ ...provider, connection: { ...provider.connection, country_codes: e.target.value.toUpperCase() } })} /></label>
+        <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), country_codes: provider.connection.country_codes }))}>Save countries</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={() => run(async () => {
+          await request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), selected_list_ids: null })
+          if (provider.enabled) { const r = await request('POST', '/providers/saracroche/update'); if (!r.ok) showToast(r.error) }
+        })}>Use Android default lists</button>
+        <p>Lists are discovered when you enable Saracroche. Android defaults are selected initially. Allow/block list priorities are preserved within Saracroche.</p>
+        {provider.catalog.map((list) => <label className="blocking-check" key={list.id}>
+          <input type="checkbox" disabled={busy} checked={list.selected} onChange={(e) => run(async () => {
+            const ids = provider.catalog.filter((i) => i.id === list.id ? e.target.checked : i.selected).map((i) => i.id)
+            await request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), selected_list_ids: ids })
+            if (provider.enabled) { const r = await request('POST', '/providers/saracroche/update'); if (!r.ok) showToast(r.error) }
+          })} />
+          {list.name} — {list.type}, priority {list.priority}, {list.item_count} entries · {list.version} · {list.license}
+        </label>)}
+      </>}
       {provider.error && <p role="status">{provider.error}</p>}
       <a href="https://saracroche.org/fr/help/database-downloadable/" target="_blank" rel="noreferrer">Official database availability</a>
     </div>}

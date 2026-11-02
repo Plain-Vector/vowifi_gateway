@@ -141,7 +141,8 @@ def test_provider_update_atomic_validation_and_failure(db, monkeypatch):
     assert p.status()[0]['next_update'] >= time.time() + 595
 
 
-def test_provider_unavailable_no_network_and_schedule(db):
+def test_provider_unavailable_no_network_and_schedule(db, monkeypatch):
+    monkeypatch.setattr(p.Saracroche, 'supported', False)
     assert not p.status()[0]['supported']
     with patch('socket.create_connection', side_effect=AssertionError('Network forbidden')):
         assert not p.update()['ok']
@@ -149,7 +150,8 @@ def test_provider_unavailable_no_network_and_schedule(db):
     p.configure(False, 48)
     assert p.status()[0]['next_update'] is None
     p.configure(True, 24)
-    assert p.status()[0]['next_update'] > time.time()
+    assert p.status()[0]['next_update'] is None
+    assert p.status()[0]['failures'] == 0
 
 
 def test_api_crud_validation_auth_and_search(db, monkeypatch):

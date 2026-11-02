@@ -38,6 +38,8 @@ def test_full_app_filter_callback_and_preserved_calls(db):
 
 def test_scheduler_runs_due_source_and_can_be_cancelled(db, monkeypatch):
     called = []
+    blocking.save_settings('*', {'saracroche': True})
+    monkeypatch.setattr(blocking_providers.Saracroche, 'supported', True)
     monkeypatch.setattr(blocking_providers, 'update', lambda name: called.append(name))
     async def scenario():
         task = asyncio.create_task(blocking_providers.scheduler())

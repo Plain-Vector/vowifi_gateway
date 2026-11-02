@@ -26,10 +26,12 @@ lookups and blocked/monitor history. New installations default to **Monitor**: m
 calls are logged and still ring. **Enforce** rejects matching incoming calls before
 SIP/WebRTC delivery; **Disabled** allows normal routing. Rule changes require no restart.
 
-Saracroche currently reports **access required**: its public documented database API and
-third-party download permission have not been verified. No private endpoint is used and
-no caller number is sent to the provider. The scheduler/status interface is present,
-but this is not a working Saracroche data feed.
+**Saracroche is optional and off by default.** Enable its switch to download the
+Android-compatible phone lists (public FR access verified), choose lists and update
+automatically every 24 hours. Matching remains local. Database license:
+**CC BY-NC-SA 4.0**, Saracroche / La bonne patte; commercial use needs separate terms.
+The page also supports a local NDJSON database import. The Android protocol is not
+an independently documented stable public API; errors preserve the last valid database.
 
 Read [architecture, source investigation, configuration, tests and rollback](docs/CALL_BLOCKING.md)
 before rollout. Preserve local IMS patches and start with a non-production line.

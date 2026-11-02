@@ -34,7 +34,10 @@ def normalize(value, prefix=False):
 def decision(conn, caller, presentation='allowed'):
     settings = dict(conn.execute('SELECT key,value FROM settings'))
     mode = settings['mode']
-    result = {'mode': mode, 'normalized': normalize(caller), 'would_block': False,
+    incoming = normalize(caller)
+    if incoming is None and re.fullmatch(r'[1-9][0-9]{1,5}', (caller or '').strip()):
+        incoming = caller.strip()
+    result = {'mode': mode, 'normalized': incoming, 'would_block': False,
               'action': 'allow', 'source': 'none', 'rule': '', 'reason': 'No enabled rule matched'}
     if mode == 'disabled':
         result['reason'] = 'Filtering disabled'
@@ -53,12 +56,15 @@ def decision(conn, caller, presentation='allowed'):
         result.update(source=kind if match else 'none', rule=kind if match else '',
                       reason=f'{kind.capitalize()} caller ID')
     else:
-        candidates = [number[:i] for i in range(2, len(number) + 1)]
+        candidates = [number[:i] for i in range(1, len(number) + 1)]
+        # Android '#' masks match one digit each, with an exact total length.
+        candidates += [number[:i] + '#' * (len(number) - i) for i in range(1, len(number))]
         placeholders = ','.join('?' for _ in candidates)
         def find(kind):
             return conn.execute(
-                f'SELECT number,kind FROM rules WHERE kind=? AND number IN ({placeholders}) '
-                'AND (match_type=\'prefix\' OR number=?) ORDER BY length(number) DESC LIMIT 1',
+                f'SELECT number,kind,priority FROM rules WHERE kind=? AND number IN ({placeholders}) '
+                'AND (match_type IN (\'prefix\',\'android\') OR number=?) '
+                'ORDER BY priority ASC,length(replace(number,\'#\',\'\')) DESC LIMIT 1',
                 (kind, *candidates, number)).fetchone()
         allowed = find('allow')
         if allowed:
@@ -67,13 +73,17 @@ def decision(conn, caller, presentation='allowed'):
         blocked = find('block')
         arcep = next((p for p in ARCEP_PREFIXES if number.startswith(p)), None)
         imported = find('saracroche') if settings.get('saracroche') == 'true' else None
-        match = bool(blocked or (arcep and settings.get('arcep') == 'true') or imported)
+        provider_allow = find('saracroche_allow') if settings.get('saracroche') == 'true' else None
+        if provider_allow and (not imported or provider_allow[2] <= imported[2]):
+            imported = provider_allow
+        match = bool(blocked or (arcep and settings.get('arcep') == 'true')
+                     or (imported and imported[1] == 'saracroche'))
         if blocked:
             result.update(source='blacklist', rule=blocked[0], reason='Personal blacklist')
         elif arcep and settings.get('arcep') == 'true':
             result.update(source='arcep', rule=arcep, reason='ARCEP verified automated-calling range')
         elif imported:
-            result.update(source='saracroche', rule=imported[0], reason='Saracroche blocklist')
+            result.update(source='saracroche', rule=imported[0], reason='Saracroche allowlist' if imported[1] == 'saracroche_allow' else 'Saracroche blocklist')
     result['would_block'] = bool(match)
     result['action'] = 'reject' if match and mode == 'enforce' else 'allow'
     return result

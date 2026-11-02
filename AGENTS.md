@@ -11,8 +11,9 @@
 - Preserve IMS registration, outgoing/incoming routing, SMS, SIP/WebRTC, multi-instance
   behavior, SIP authentication and contact limits unless explicitly in task scope.
 - Call-filter decisions must be local, bounded and fail open. Do not send incoming
-  caller numbers to providers. Saracroche remains unavailable until supported access
-  and database permission are verified; do not probe private download endpoints.
+  caller numbers to providers. Saracroche is opt-in and uses its verified public
+  Android catalog protocol (FR data: CC BY-NC-SA 4.0, noncommercial). Preserve
+  attribution, per-list license checks and access denials; do not bypass restrictions.
 - Run `python -m pytest -q`, `npm ci --prefix webui`, `npm run build --prefix webui`,
   `python -m compileall -q control/app engine`, and `git diff --check` as applicable.
   Development dependencies: `pip install -r requirements-dev.txt` (Linux pyscard needs

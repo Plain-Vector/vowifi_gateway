@@ -6,7 +6,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import blocking, blocking_providers as providers, config as cfg
 from .blocking_match import normalize
@@ -71,6 +71,16 @@ class Lookup(Strict):
 class UpdateSettings(Strict):
     auto_update: bool = True
     interval_hours: int = Field(default=24, ge=1, le=720)
+    country_codes: str = Field(default='FR', pattern=r'^[A-Z]{2}(,[A-Z]{2}){0,9}$')
+    selected_list_ids: list[int] | None = Field(default=None, max_length=100)
+    source: Literal['remote', 'local'] = 'remote'
+
+    @field_validator('selected_list_ids')
+    @classmethod
+    def valid_ids(cls, ids):
+        if ids is not None and (not ids or any(i <= 0 for i in ids) or len(ids) != len(set(ids))):
+            raise ValueError('Select one or more unique positive list IDs, or null for Android defaults')
+        return ids
 
 
 @router.get('/settings')
@@ -140,8 +150,25 @@ def provider_status():
 
 @router.put('/providers/saracroche')
 def provider_config(body: UpdateSettings):
-    providers.configure(body.auto_update, body.interval_hours)
+    connection = body.model_dump(exclude_unset=True)
+    connection.pop('auto_update', None); connection.pop('interval_hours', None)
+    providers.configure(body.auto_update, body.interval_hours, **connection)
     return provider_status()
+
+
+@router.post('/providers/saracroche/import')
+async def import_saracroche(request: Request, version: str = Query('', max_length=128),
+                             license_info: str = Query('', max_length=500)):
+    content = bytearray()
+    async for chunk in request.stream():
+        if len(content) + len(chunk) > providers.MAX_IMPORT_BYTES:
+            raise HTTPException(413, 'Database exceeds 64 MiB')
+        content.extend(chunk)
+    import asyncio
+    try:
+        return await asyncio.to_thread(providers.import_android, bytes(content), version, license_info)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 @router.post('/providers/saracroche/update')

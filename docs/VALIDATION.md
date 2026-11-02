@@ -4,7 +4,7 @@ Changes were validated locally, without deployment or GitHub publication.
 
 | Check | Result |
 | --- | --- |
-| Backend pytest suite | 40 passed (Python 3.14); includes actual FastAPI app callbacks |
+| Backend pytest suite | 73 passed (Python 3.14); includes actual FastAPI app callbacks |
 | Python compileall (control/app and engine) | Passed |
 | Shell syntax (install.sh, engine/entrypoint.sh) | Passed |
 | npm ci and production Vite build | Passed (Node 22) |
@@ -26,3 +26,16 @@ Before production rollout, validate the patched Asterisk image, actual 603 respo
 normal incoming/outgoing calls, SIP/WebRTC ringing, SMS, withheld IDs, failure-open
 behavior and coexistence with the installation's custom precondition changes on a
 test line. Initial engine recreation must be scheduled while idle.
+
+Saracroche follow-up: public FR catalog and all five default phone lists were downloaded
+successfully using the implemented Android-compatible adapter in a fresh temporary
+SQLite database (132,610 merged rules; catalog hash/count verification passed). No
+production data was used. Remote protocol tests use synthetic responses in CI and cover
+opt-in, priorities, selection, cache reuse, integrity failures, licenses, URL boundaries,
+HTTP errors and issued-credential handling. Local imports have separate validation,
+atomicity and disabled-source tests. No database files were added to Git.
+
+The follow-up browser smoke also passed against the real remote source in an isolated
+temporary server: switch initially off, first connection/download, discovered list UI,
+local matching, disabling matching, local-file import without implicit enable, and a
+390 px viewport. No page JavaScript errors occurred.

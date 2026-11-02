@@ -40,6 +40,18 @@ def init():
         INSERT OR IGNORE INTO blocking_migrations VALUES(1);
         INSERT OR IGNORE INTO blocking_providers(name) VALUES('saracroche');
         ''')
+        if not c.execute('SELECT 1 FROM blocking_migrations WHERE version=2').fetchone():
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'none'")
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN license TEXT")
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN checksum TEXT")
+            c.execute('UPDATE blocking_providers SET next_update=NULL WHERE name=?', ('saracroche',))
+            c.execute('INSERT INTO blocking_migrations VALUES(2)')
+        if not c.execute('SELECT 1 FROM blocking_migrations WHERE version=3').fetchone():
+            c.execute("ALTER TABLE blocking_imports ADD COLUMN action TEXT NOT NULL DEFAULT 'block'")
+            c.execute('ALTER TABLE blocking_imports ADD COLUMN priority INTEGER NOT NULL DEFAULT 100')
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN options TEXT NOT NULL DEFAULT '{}'")
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN catalog TEXT NOT NULL DEFAULT '[]'")
+            c.execute('INSERT INTO blocking_migrations VALUES(3)')
     publish_all()
 
 
@@ -112,15 +124,16 @@ def snapshot_path(iid):
 def build_snapshot(c, iid):
     effective = settings(iid)['effective']
     c.executescript('''CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);
-        CREATE TABLE rules(kind TEXT,number TEXT,match_type TEXT);
+        CREATE TABLE rules(kind TEXT,number TEXT,match_type TEXT,priority INTEGER DEFAULT 0);
         CREATE INDEX rules_lookup ON rules(kind,number);''')
     c.executemany('INSERT INTO settings VALUES(?,?)',
                   [(k, json.dumps(v) if isinstance(v, bool) else v) for k, v in effective.items()])
     with store._conn() as source:
-        c.executemany('INSERT INTO rules VALUES(?,?,?)', source.execute(
+        c.executemany('INSERT INTO rules(kind,number,match_type) VALUES(?,?,?)', source.execute(
             'SELECT kind,number,match_type FROM blocking_rules WHERE scope IN (\'*\',?) AND enabled=1', (iid,)))
-        c.executemany('INSERT INTO rules VALUES(?,?,?)', source.execute(
-            "SELECT provider,number,match_type FROM blocking_imports"))
+        c.executemany('INSERT INTO rules VALUES(?,?,?,?)', source.execute(
+            "SELECT CASE WHEN action='allow' THEN provider || '_allow' ELSE provider END,"
+            "number,match_type,priority FROM blocking_imports"))
 
 
 def publish(iid):

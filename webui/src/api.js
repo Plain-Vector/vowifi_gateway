@@ -6,7 +6,8 @@ async function j(method, path, body) {
   if (path.startsWith('/api/blocking') && sessionStorage.getItem('blocking-token')) {
     opt.headers['X-Blocking-Token'] = sessionStorage.getItem('blocking-token')
   }
-  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body) }
+  if (body instanceof Blob) { opt.headers['Content-Type'] = 'application/x-ndjson'; opt.body = body }
+  else if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body) }
   const r = await fetch(base + path, opt)
   const text = await r.text()
   let data

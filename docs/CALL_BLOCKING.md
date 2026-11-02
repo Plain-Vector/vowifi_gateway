@@ -81,14 +81,14 @@ notifications retain their existing behavior for allowed calls.
 ## Persistence
 
 All authoritative state uses the existing `vowifi.sqlite`; migrations are additive
-and idempotent (blocking_migrations v1). Existing messages and calls are not altered.
+and idempotent (blocking_migrations v1–v3). Existing messages and calls are not altered.
 
 | Table | Purpose |
 | --- | --- |
 | blocking_rules | Personal allow/block rules; scope, canonical number, exact/prefix, description, enabled |
 | blocking_config | JSON settings per scope; `*` is global, other keys are instance IDs |
 | blocking_providers | Schedule, last success, next attempt, version, entry count, sanitized error, failure count |
-| blocking_imports | Provider rules, separate from personal rules |
+| blocking_imports | Provider rules, separate from personal rules; block/allow action and list priority |
 | blocking_events | Raw caller ID, line, timestamp, Asterisk call ID, structured decision; deduped per line/call ID |
 
 Global Disabled is a master stop: it masks every line mode, including Enforce overrides.
@@ -118,8 +118,9 @@ All management endpoints are under `/api/blocking`:
 | POST /lookup | Local test: instance, number, presentation; does not add history |
 | GET /events?instance=…&limit=100&offset=0 | Filter-event history, bounded page size |
 | GET /providers | Status and update metadata |
-| PUT /providers/saracroche | auto_update and interval_hours (1..720, default 24) |
-| POST /providers/saracroche/update | Manual attempt; honest unavailable/error response |
+| PUT /providers/saracroche | auto_update, interval_hours (1..720, default 24), source (remote/local), country_codes, selected_list_ids |
+| POST /providers/saracroche/update | Synchronize selected remote lists while opted in |
+| POST /providers/saracroche/import?version=…&license_info=… | Stream a bounded raw Android NDJSON phone blocklist, up to 64 MiB |
 
 FastAPI rejects unknown fields, invalid scopes, modes and malformed rules. Duplicate
 rules return 409. Existing `/api/engine/event` accepts bounded validated call_filter
@@ -181,23 +182,90 @@ Catalog requests send X-Country-Code without organization credentials, or X-Devi
 and X-API-Key when both are available. Downloads send the latter pair when available.
 POST /api/v2/activate exchanges an activation token for an API key. These are facts
 from app source, **not a supported public gateway contract or permission to use them**.
-No endpoint was probed and no list was downloaded during this investigation.
+An initial review did not make remote requests; the owner subsequently explicitly
+requested Android-protocol compatibility. A normal unauthenticated catalog request with
+X-Country-Code: FR returned HTTP 200 on 2026-11-02. All five default phone lists were
+successfully downloaded in an isolated temporary database, yielding 132,610 distinct
+rules after priority resolution. Raw MD5 digests and nonblank record counts matched the
+catalog. No access restriction was bypassed and no caller number was sent.
 
-The Android code has GPLv3 licensing; database licenses are separate metadata fields.
-Neither the application license nor the website-content license establishes permission
-to redistribute databases or automate third-party downloads. Official help still says
-a documented download API will be available in the future and invites contact.
-Consequently the Saracroche adapter deliberately returns `access_required`, has zero
-entries initially and makes **no network request**. Its controls do not imply a working
-Saracroche data feed. Needed before enabling an actual adapter: provider confirmation
-of gateway use, database license/redistribution terms, documented endpoints, supported
-authentication, formats, integrity checks, rate limits and empty-list semantics.
+### Working optional connection
 
-The provider interface, scheduler and atomic validated replacement pipeline exist;
-there is no user-configurable arbitrary URL or private-endpoint bypass. Future permitted
-adapters return a bounded Dataset with canonical exact/prefix rules and must validate
-transport integrity and impose download limits. Unsupported pattern syntax must be
-rejected rather than interpreted as regex.
+Saracroche is **off by default**, independently of personal lists and ARCEP. The WebUI
+switch enables matching for the chosen global/line scope and attempts an initial update
+when the remote source is selected. With the switch off everywhere, neither manual
+remote updates nor the scheduler contact Saracroche. Global filtering Disabled also
+stops remote updates. An in-progress network request may finish after disable; subsequent
+list requests check the switch again. Retained data is not applied to disabled scopes.
+
+The server source follows the Android catalog protocol; this is not a promise of an
+independently documented/stable public API. Official help still describes public API
+documentation as planned. Endpoints or formats may change; failures keep the last valid
+local data, expose a sanitized error and retry with backoff.
+
+Public use needs no activation/key as verified with country FR. Optional **issued**
+organization credentials can be configured in the manager environment as
+VOWIFI_SARACROCHE_API_KEY and VOWIFI_SARACROCHE_DEVICE_ID (both together). They are never
+returned in status, included in snapshots or recorded in logs. No device is impersonated,
+activation token guessed or access denial bypassed. Use a systemd environment drop-in or
+container configuration; the installer does not forward these optional variables.
+
+Country codes default to FR (comma-separated uppercase ISO-style codes). Android-enabled
+phone lists are selected initially; after discovery each list can be selected separately.
+Only phone lists of type block/allow are used; SMS/directory lists are ignored. Saved
+selection must contain at least one list; switch Saracroche off to select no source.
+Personal whitelist still wins over everything; personal blacklist and independent ARCEP
+rules keep their precedence. **Within Saracroche**, a matching list with lower numeric
+priority wins, as in Android; ties prefer allow. This matters: a broad block list may
+precede a lower-priority community allowlist. Exact-length trailing # masks and short
+service codes are supported without interpreting regex. Short service codes remain
+separate from E.164 normalization of personal entries.
+
+### Data licenses and attribution
+
+The Android software is GPLv3. Server catalog entries independently declare database
+licenses; all five verified FR phone lists declare **CC BY-NC-SA 4.0**. The gateway shows
+this license and attribution to **Saracroche / La bonne patte**, with a link to
+https://creativecommons.org/licenses/by-nc-sa/4.0/. This feed is for noncommercial use
+under those terms; commercial use needs separate terms from the provider. The adapter
+rejects selected lists with missing/unrecognized license rather than assuming the
+software license covers server data. License notices are retained in status/catalog.
+No remote database is bundled with or committed into this repository. The integration
+was written for this gateway; Android source is referenced for interoperability.
+
+### Validation, cache and manual files
+
+TLS certificate verification is enabled. Catalog size is bounded to 1 MiB / 100 lists,
+each file to 64 MiB / 1,000,000 records, aggregate downloads to 128 MiB / 2,000,000
+records. Network connect/read timeouts are 5/10 seconds, with a 90-second deadline
+checked between requests/chunks. These requests run only in background workers, never
+in the incoming-call path. HTTP redirects and download URLs outside the exact
+app.saracroche.org HTTPS origin are rejected, so credentials cannot be forwarded to a
+catalog-supplied third-party host. 401/403/429 and transport errors are reported without
+upstream bodies or secret-bearing exception text.
+
+Unlike the inspected Android implementation, the adapter verifies each catalog MD5
+against downloaded bytes and validates the nonblank entry count before parsing every
+record. MD5 is the provider's content discriminator, not a digital signature; HTTPS
+protects transport authenticity. An invalid record fails the whole update. The complete
+selection replaces the previous provider rules in one transaction. Rule priority/action
+are stored with the dataset. Selected-list changes apply on a successful subsequent
+update. The last valid selection remains effective if an update fails.
+
+Validated downloads are cached under data/saracroche-cache in private files, one per
+list ID. A new catalog hash triggers a download; unchanged files are rehashed before
+reuse. Cache corruption triggers a fresh download. Database schema v3 adds provider
+options/catalog and import action/priority. Cache and credentials are not engine-mounted.
+The engine snapshot contains rules/action priority only. Deploy the updated matcher
+image before using the new Android mask/allowlist features.
+
+The optional **Local file import** source accepts UTF-8 NDJSON ListPatternInfo records:
+name and pattern (digits with optional leading + and trailing # masks). Version is
+optional, otherwise derived from SHA-256; license/source notes can be supplied. Only
+phone blocklists belong in this manual import. It validates the whole file, replaces
+only Saracroche rules and does not turn the switch on. Local mode performs no remote
+updates; import another file to refresh it. Permission to use an uploaded file remains
+with its supplier. Empty, malformed or oversized files preserve the previous dataset.
 
 ## ARCEP
 
@@ -214,13 +282,14 @@ not a remote blocklist downloaded by the scheduler.
 
 ## Updates
 
-A managed lifespan task checks due providers every 30 seconds; background work runs in
+A managed lifespan task checks due enabled remote providers every 30 seconds; background work runs in
 a thread, outside call processing. Manual and scheduled attempts share a nonblocking
 single-update lock. Default interval is 24 hours, configurable 1..720 hours. Failure
 backoff is 5, 10, 20, 40… minutes, capped at 24 hours. Disabling auto-update clears the
-next attempt; manual attempts remain possible. Metadata survives manager restarts.
+next attempt; manual attempts remain possible while Saracroche is enabled. Turning
+Saracroche off everywhere stops both automatic and manual remote access. Metadata survives manager restarts.
 
-A dataset is completely validated before a transactional replacement of provider rows
+A dataset (including the selected provider allow/block priorities) is completely validated before a transactional replacement of provider rows
 and successful-update metadata. Invalid numbers, unknown match types, empty/oversized
 datasets and transport failures retain previous valid content and version. Snapshot
 publication follows commit; if publication fails, existing engine snapshots remain
