@@ -4,7 +4,7 @@ Changes were validated locally, without deployment or GitHub publication.
 
 | Check | Result |
 | --- | --- |
-| Backend pytest suite | 73 passed (Python 3.14); includes actual FastAPI app callbacks |
+| Backend pytest suite | 74 passed (Python 3.14); includes actual FastAPI app callbacks |
 | Python compileall (control/app and engine) | Passed |
 | Shell syntax (install.sh, engine/entrypoint.sh) | Passed |
 | npm ci and production Vite build | Passed (Node 22) |
@@ -39,3 +39,6 @@ The follow-up browser smoke also passed against the real remote source in an iso
 temporary server: switch initially off, first connection/download, discovered list UI,
 local matching, disabling matching, local-file import without implicit enable, and a
 390 px viewport. No page JavaScript errors occurred.
+
+Regression check: replacing a 100,000-entry provider dataset with a local file does
+not open a nested SQLite read during the write transaction (exclusive-lock case).

@@ -92,3 +92,14 @@ def test_v2_migration_is_idempotent(db):
     assert p.status()[0]['version'] == 'survives'
     with store._conn() as c:
         assert [row[0] for row in c.execute('SELECT version FROM blocking_migrations ORDER BY version')] == [1, 2, 3]
+
+
+def test_local_import_after_large_remote_database_has_no_nested_read_lock(db):
+    # Deleting a dataset larger than SQLite's page cache can acquire an exclusive lock.
+    # Connection settings must be read before entering that write transaction.
+    with store._conn() as c:
+        c.executemany('INSERT INTO blocking_imports(provider,number,match_type) VALUES(?,?,?)',
+                      (('saracroche', f'+336{i:08d}', 'exact') for i in range(100000)))
+    assert p.import_android(ndjson('33612345678'), 'replacement')['ok']
+    assert p.status()[0]['entries'] == 1
+    assert p.status()[0]['connection']['source'] == 'local'

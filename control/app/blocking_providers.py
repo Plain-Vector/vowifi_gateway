@@ -194,10 +194,10 @@ def import_android(content, version='', license_info=''):
         version = version.strip() or 'sha256:' + checksum[:16]
         if len(version) > 128 or len(license_info) > 500:
             raise ValueError('Version or license metadata is too long')
+        opts = {**saracroche.options(), 'source': 'local'}
         with blocking._lock, store._conn() as c:
             c.execute("DELETE FROM blocking_imports WHERE provider='saracroche'")
             c.executemany('INSERT INTO blocking_imports(provider,number,match_type) VALUES(?,?,?)', rules)
-            opts = {**saracroche.options(), 'source': 'local'}
             c.execute("UPDATE blocking_providers SET options=? WHERE name='saracroche'", (json.dumps(opts),))
             c.execute("""UPDATE blocking_providers SET source_mode='local',last_success=?,version=?,
                 entries=?,license=?,checksum=?,error=NULL,failures=0,next_update=NULL
