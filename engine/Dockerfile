@@ -31,7 +31,7 @@ RUN dnf -y update && \
     popt-devel libical-devel spandsp-devel openldap-devel codec2-devel fftw-devel libsndfile-devel \
     unbound-devel wget subversion libresample-devel binutils-devel libsrtp-devel gsm-devel iproute \
     procps-ng net-tools python3-pysocks python3-requests python3-pyscard python3-jinja2 \
-    python3-devel \
+    python3-devel python3-pip \
     meson ninja-build perl-podlators systemd-devel \
     tcpdump bind-utils iputils
 
@@ -63,12 +63,12 @@ RUN git clone --depth=1 --branch sysmocom/2.14 https://gitea.sysmocom.de/sysmoco
     make -j$(nproc) && \
     make install
 
-RUN pip install panoramisk
+RUN python3 -m pip install panoramisk
 
 # SWu (python IKEv2/IPsec) tunnel dependencies. swu_ike.py is the ePDG tunnel: it needs
 # pycryptodome/cryptography (IKE + ESP crypto), pyserial (imported by the upstream emulator), and
 # mitshell's CryptoMobile + card (USIM/Milenage helpers).
-RUN pip install pyserial pycryptodome cryptography \
+RUN python3 -m pip install pyserial pycryptodome cryptography \
     "git+https://github.com/mitshell/CryptoMobile.git" \
     "git+https://github.com/mitshell/card.git"
 

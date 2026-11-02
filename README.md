@@ -5,8 +5,8 @@ A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SI
 ## Install on a fresh server
 
 Run these commands **on the server where the SIM reader is connected**. You need Linux,
-root/sudo access and Internet. The default mode uses systemd for the manager; Docker is
-installed automatically for Asterisk. No host Node.js setup is required.
+root/sudo access and Internet. The recommended command below runs the manager and Asterisk in Docker, which the
+installer sets up automatically. No host Python environment or Node.js setup is required.
 
 ```sh
 # Debian/Ubuntu: install Git if it is not already available
@@ -15,7 +15,7 @@ sudo apt-get install -y git
 
 git clone https://github.com/Plain-Vector/vowifi_gateway.git
 cd vowifi_gateway
-sudo ./install.sh install
+sudo ./install.sh install --mode docker
 ```
 
 The installer builds Asterisk/engine and WebUI from source, installs the Python runtime,
@@ -61,7 +61,7 @@ flow. Re-running install never replaces an existing administrator.
 4. Call Blocking starts in **Monitor**. Saracroche and ntfy are optional and off; enable
    them from the WebUI after normal calls work. Use Enforce only after controlled tests.
 
-For a containerized manager, use `sudo ./install.sh install --mode docker` instead;
+For a native manager on a systemd host, use `sudo ./install.sh install --mode local` instead;
 the same administrator setup applies. Both modes keep runtime state under `data/`
 (or your configured VOWIFI_DATA_DIR) and remember the selected mode.
 
@@ -99,7 +99,7 @@ number-space coverage, accounting for overlapping masks and provider list priori
 **Saracroche is optional and off by default.** Enable its switch to download the
 Android-compatible phone lists (public FR access verified), choose lists and update
 automatically every 24 hours. Matching remains local. Database license:
-**CC BY-NC-SA 4.0**, Saracroche / La bonne patte; commercial use needs separate terms.
+**CC BY-NC-SA 4.0**, Saracroche — Camille Bouvat / La bonne patte; commercial use needs separate terms.
 The page also supports a local NDJSON database import. The Android protocol is not
 an independently documented stable public API; errors preserve the last valid database.
 
@@ -477,4 +477,3 @@ After installing Python development requirements and building the WebUI, run
 instance uses `data/local-preview`, disables Docker/PCSC engine operations and has a
 separate first-run administrator setup. Its one-time code is in
 `data/local-preview/auth/setup-code`. No live SIM calls or SMS are connected.
-

@@ -94,3 +94,18 @@ jobs:
         run: |
           docker run --rm --entrypoint asterisk vowifi/engine:ci -V
           docker run --rm --entrypoint python3 vowifi/engine:ci -c "import sys; sys.path.insert(0,'/usr/local/bin'); import call_filter, blocking_match, notify; assert blocking_match.normalize('0612345678') == '+33612345678'; print('Engine imports passed')"
+      - name: Exercise unattended fresh-server installer
+        run: |
+          docker tag vowifi/engine:ci vowifi/engine
+          sudo env VOWIFI_PORT=18444 ./install.sh install --mode docker
+          curl -kfsS https://127.0.0.1:18444/api/auth/status | python3 -c "import json,sys; assert json.load(sys.stdin)['configured'] is False"
+          umask 077
+          sudo ./install.sh setup-code > /tmp/vowifi-setup-code-output
+          test -s /tmp/vowifi-setup-code-output
+          sudo test -s data/auth/setup-code
+          echo "Fresh-server installer and setup-code command passed"
+      - name: Installer diagnostics
+        if: always()
+        run: |
+          docker logs vowifi-control 2>/dev/null || true
+          sudo journalctl -u pcscd --no-pager -n 30 || true
