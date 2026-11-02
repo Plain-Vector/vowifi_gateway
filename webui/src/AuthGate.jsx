@@ -30,7 +30,7 @@ export default function AuthGate() {
       <h1 style={{ marginTop: 0, fontSize: 24 }}>VoWiFi Gateway</h1>
       <h2 style={{ fontSize: 18 }}>{!status ? 'Connecting…' : status.configured ? 'Administrator login' : 'Create administrator'}</h2>
       {status && <>
-        {!status.configured && <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Enter the one-time code from the server's data/auth/setup-code file, then choose your login and password.</p>}
+        {!status.configured && <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>On the server, run sudo ./install.sh setup-code from the installation folder. Enter the one-time code below, then choose your login and password.</p>}
         {!status.configured && <label>Setup code<input autoComplete="off" type="password" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
         <label>Username<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} /></label>
         <label>Password<input type="password" autoComplete={status.configured ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={status.configured ? 1 : 12} maxLength={256} required /></label>
