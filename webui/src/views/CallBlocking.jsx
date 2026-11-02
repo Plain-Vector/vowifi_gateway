@@ -158,6 +158,7 @@ export default function CallBlocking({ instances, showToast }) {
           {list.name} — {list.type}, priority {list.priority}, {list.item_count} entries · {list.version} · {list.license}
         </label>)}
       </>}
+      {provider.coverage?.blocked_numbers != null && <p>Blocking rules: {provider.coverage.block.toLocaleString()} · Allow rules: {provider.coverage.allow.toLocaleString()} · Distinct numbers covered by blocking: {provider.coverage.blocked_numbers.toLocaleString()} (Saracroche list priorities and overlaps accounted for; includes possibly unallocated numbers).</p>}
       {provider.error && <p role="status">{provider.error}</p>}
       <a href="https://saracroche.org/fr/help/database-downloadable/" target="_blank" rel="noreferrer">Official database availability</a>
     </div>}

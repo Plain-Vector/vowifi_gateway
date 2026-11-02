@@ -91,7 +91,7 @@ def test_v2_migration_is_idempotent(db):
     b.init(); b.init()
     assert p.status()[0]['version'] == 'survives'
     with store._conn() as c:
-        assert [row[0] for row in c.execute('SELECT version FROM blocking_migrations ORDER BY version')] == [1, 2, 3]
+        assert [row[0] for row in c.execute('SELECT version FROM blocking_migrations ORDER BY version')] == [1, 2, 3, 4]
 
 
 def test_local_import_after_large_remote_database_has_no_nested_read_lock(db):

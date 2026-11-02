@@ -11,6 +11,7 @@ from typing import Protocol
 
 from . import blocking, store, saracroche
 from .blocking_match import normalize
+from .blocking_coverage import calculate as coverage
 
 log = logging.getLogger(__name__)
 _update_lock = threading.Lock()
@@ -49,6 +50,7 @@ def status():
         row['status'] = 'local_ready' if saracroche.options()['source'] == 'local' and row['entries'] else 'available' if row['supported'] else 'access_required'
         row['connection'] = saracroche.options()
         row['catalog'] = json.loads(row['catalog'])
+        row['coverage'] = json.loads(row['coverage'])
         row.pop('options', None)
         row['enabled'] = saracroche.enabled()
         row['can_auto_update'] = bool(row['supported'] and row['connection']['source'] == 'remote')
@@ -98,6 +100,7 @@ def update(name='saracroche'):
             for entry in sorted(validated, key=lambda x: (x[4], x[3] != 'allow')):
                 by_rule.setdefault(entry[:3], entry)
             validated = list(by_rule.values())
+            covered = coverage([(n, k, a, p) for _, n, k, a, p in validated])
             # Replacement + metadata commit together. No change to last good data on error.
             with blocking._lock, store._conn() as c:
                 c.execute('DELETE FROM blocking_imports WHERE provider=?', (name,))
@@ -107,6 +110,7 @@ def update(name='saracroche'):
                     WHERE name=?''', (now, dataset.version, len(validated), now, name))
                 c.execute("UPDATE blocking_providers SET source_mode='remote',catalog=?,license=?,checksum=NULL WHERE name=?",
                           (json.dumps(dataset.catalog), dataset.license, name))
+                c.execute('UPDATE blocking_providers SET coverage=? WHERE name=?', (json.dumps(covered), name))
             blocking.publish_all()
             return {'ok': True}
         except Exception as exc:
@@ -194,11 +198,13 @@ def import_android(content, version='', license_info=''):
         version = version.strip() or 'sha256:' + checksum[:16]
         if len(version) > 128 or len(license_info) > 500:
             raise ValueError('Version or license metadata is too long')
+        covered = coverage([(n, k, 'block', 100) for _, n, k in rules])
         opts = {**saracroche.options(), 'source': 'local'}
         with blocking._lock, store._conn() as c:
             c.execute("DELETE FROM blocking_imports WHERE provider='saracroche'")
             c.executemany('INSERT INTO blocking_imports(provider,number,match_type) VALUES(?,?,?)', rules)
             c.execute("UPDATE blocking_providers SET options=? WHERE name='saracroche'", (json.dumps(opts),))
+            c.execute("UPDATE blocking_providers SET coverage=? WHERE name='saracroche'", (json.dumps(covered),))
             c.execute("""UPDATE blocking_providers SET source_mode='local',last_success=?,version=?,
                 entries=?,license=?,checksum=?,error=NULL,failures=0,next_update=NULL
                 WHERE name='saracroche'""", (int(time.time()), version, len(rules), license_info, checksum))

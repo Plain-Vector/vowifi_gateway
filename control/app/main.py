@@ -15,6 +15,7 @@ import os
 import random
 import re
 import time
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
@@ -24,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config as cfg
 from . import store, engine, status as status_mod, sim, card, notify_push, lpa, estkme, usbreader
 from .ami import AmiClient
-from . import blocking, blocking_providers
+from . import blocking, blocking_providers, auth
 from .blocking_api import router as blocking_router
 
 logging.basicConfig(level=logging.INFO,
@@ -93,6 +94,10 @@ class Hub:
         dead = []
         for ws in list(self.clients):
             try:
+                if not auth.authenticated(ws):
+                    await ws.close(code=4401)
+                    dead.append(ws)
+                    continue
                 await ws.send_json(msg)
             except Exception:
                 dead.append(ws)
@@ -108,7 +113,7 @@ class Hub:
         lock = self._ami_locks.setdefault(iid, asyncio.Lock())
         async with lock:
             inst = cfg.get_instance(iid)
-            running = bool(inst) and engine.is_running(iid)
+            running = bool(inst) and inst.get("enabled", True) and engine.is_running(iid)
             ip = engine.container_ip(iid) if running else None
             client = self.ami.get(iid)
             # Reuse only a healthy client still pointed at the current container.
@@ -575,6 +580,9 @@ async def _auto_recover(iid: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    auth.init()
+    for inst in cfg.list_instances():
+        auth.engine_token(str(inst["id"]))
     store.init()
     blocking.init()
     updater = asyncio.create_task(blocking_providers.scheduler())
@@ -592,6 +600,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VoWiFi Gateway", lifespan=lifespan)
+app.add_middleware(auth.AccessMiddleware)
+app.include_router(auth.router)
 app.include_router(blocking_router)
 
 
@@ -1076,6 +1086,18 @@ def api_put_settings(body: dict):
             400,
             detail={"code": "invalid_settings", "message": str(e)},
         ) from e
+
+
+
+
+@app.post('/api/notifications/ntfy/test')
+async def api_ntfy_test():
+    settings = cfg.get_settings().get('ntfy', {})
+    if not settings.get('enabled'):
+        raise HTTPException(400, 'Save and enable ntfy first')
+    payload = notify_push.build_payload(notify_push.EV_INCOMING_SMS, {'id': 'test', 'name': 'Test notification'},
+                                      'VoWiFi Gateway', 'Test notification — no real SMS was sent.')
+    return await asyncio.to_thread(notify_push.send_ntfy, settings, payload)
 
 
 # ----------------------------- instances -----------------------------
@@ -1582,9 +1604,11 @@ def _call_disposition(dialstatus: str, cause: int, direction: str = "out") -> st
 
 
 @app.post("/api/engine/event")
-async def api_engine_event(payload: dict):
+async def api_engine_event(payload: dict, request: Request):
     """Receives notify.py callbacks from engine containers."""
     iid = str(payload.get("instance", ""))
+    if request.headers.get("x-engine-instance") and request.headers["x-engine-instance"] != iid:
+        raise HTTPException(403, "Engine instance mismatch")
     event = payload.get("event", "")
     args = payload.get("args", [])
     if event == "call_filter" and len(args) == 1:
@@ -1725,7 +1749,7 @@ def _dispatch_push(event: str, iid: str, source: str, text: str | None = None):
     settings = cfg.get_settings()
     wh = settings.get("webhook") or {}
     tg = settings.get("telegram") or {}
-    if not (wh.get("enabled") or tg.get("enabled")):
+    if not (wh.get("enabled") or tg.get("enabled") or settings.get("ntfy", {}).get("enabled")):
         return
     asyncio.create_task(
         asyncio.to_thread(notify_push.dispatch, settings, event, inst, source, text))
@@ -2013,7 +2037,13 @@ async def ws_endpoint(ws: WebSocket):
     hub.clients.add(ws)
     try:
         while True:
-            await ws.receive_text()  # keepalive / ignore inbound
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=30)
+            except asyncio.TimeoutError:
+                pass
+            if not auth.authenticated(ws):
+                await ws.close(code=4401)
+                break
     except WebSocketDisconnect:
         hub.clients.discard(ws)
     except Exception:
@@ -2026,8 +2056,11 @@ if os.path.isdir(WEBUI_DIR):
 
     @app.get("/{full_path:path}")
     def spa(full_path: str):
-        candidate = os.path.join(WEBUI_DIR, full_path)
-        if full_path and os.path.isfile(candidate):
+        root = Path(WEBUI_DIR).resolve()
+        candidate = (root / full_path).resolve()
+        if not candidate.is_relative_to(root):
+            raise HTTPException(404, 'Not found')
+        if full_path and candidate.is_file():
             return FileResponse(candidate)
         index = os.path.join(WEBUI_DIR, "index.html")
         if os.path.isfile(index):

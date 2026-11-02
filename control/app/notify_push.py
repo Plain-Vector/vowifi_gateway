@@ -14,6 +14,8 @@ failing/slow endpoint only logs a warning.
 from __future__ import annotations
 
 import logging
+import re
+from urllib.parse import urlsplit
 from typing import Any
 
 import requests
@@ -70,9 +72,9 @@ def _post_webhook(cfg: dict, payload: dict):
         # cert mismatch silently drop notifications.
         r = requests.post(url, json=payload, timeout=_TIMEOUT, verify=False,
                           headers={"User-Agent": "vowifi-gateway"})
-        log.info("webhook %s -> %s (%s)", payload.get("event"), url, r.status_code)
+        log.info("webhook %s -> HTTP %s", payload.get("event"), r.status_code)
     except Exception as e:  # noqa
-        log.warning("webhook POST to %s failed: %r", url, e)
+        log.warning("webhook delivery failed")
 
 
 def _telegram_text(payload: dict) -> str:
@@ -101,11 +103,55 @@ def _post_telegram(cfg: dict, payload: dict):
                   "disable_web_page_preview": True},
             timeout=_TIMEOUT)
         if r.status_code != 200:
-            log.warning("telegram sendMessage -> %s %s", r.status_code, r.text[:200])
+            log.warning("telegram sendMessage -> HTTP %s", r.status_code)
         else:
             log.info("telegram %s -> chat %s ok", payload.get("event"), chat)
     except Exception as e:  # noqa
-        log.warning("telegram sendMessage failed: %r", e)
+        log.warning("telegram delivery failed")
+
+
+def validate_ntfy(config):
+    server = config.get('server', '')
+    topic = config.get('topic', '')
+    token = config.get('token', '')
+    if not isinstance(server, str) or not isinstance(topic, str) or not isinstance(token, str):
+        raise ValueError('ntfy server, topic and token must be strings')
+    url = urlsplit(server)
+    if (url.scheme not in ('https', 'http') or not url.netloc or url.username or url.password
+            or url.query or url.fragment or any(c.isspace() for c in server)):
+        raise ValueError('ntfy server must be an HTTP(S) URL without credentials, query or fragment')
+    if url.scheme == 'http' and token:
+        raise ValueError('Use HTTPS when configuring an ntfy access token')
+    if topic and not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', topic):
+        raise ValueError('ntfy topic must contain 1–64 letters, digits, underscores or hyphens')
+    if config.get('enabled') and not topic:
+        raise ValueError('ntfy topic is required when enabled')
+    if not isinstance(config.get('priority'), int) or not 1 <= config['priority'] <= 5:
+        raise ValueError('ntfy priority must be between 1 and 5')
+    if len(token) > 512 or not token.isascii() or any(ord(c) <= 32 or ord(c) == 127 for c in token):
+        raise ValueError('Invalid ntfy token')
+
+
+def send_ntfy(config, payload):
+    """JSON publishing keeps Unicode titles and message bodies out of HTTP headers."""
+    validate_ntfy(config)
+    message = _telegram_text(payload)
+    if payload['event'] == EV_INCOMING_SMS and not config.get('include_sms_body', True):
+        message = _telegram_text({**payload, 'text': '[SMS content hidden]'})
+    headers = {'Cache': 'yes' if config.get('cache') else 'no'}
+    if config.get('token'):
+        headers['Authorization'] = 'Bearer ' + config['token']
+    try:
+        response = requests.post(config['server'].rstrip('/'), headers=headers,
+            json={'topic': config['topic'], 'title': 'VoWiFi: incoming SMS' if payload['event'] == EV_INCOMING_SMS else 'VoWiFi: incoming call',
+                  'message': message.encode('utf-8')[:4000].decode('utf-8', errors='ignore'), 'priority': config.get('priority', 3),
+                  'tags': ['incoming_envelope' if payload['event'] == EV_INCOMING_SMS else 'telephone_receiver']},
+            timeout=_TIMEOUT, verify=True, allow_redirects=False)
+        if response.status_code not in (200, 201, 202):
+            return {'ok': False, 'error': f'ntfy returned HTTP {response.status_code}'}
+        return {'ok': True}
+    except requests.RequestException:
+        return {'ok': False, 'error': 'ntfy network or TLS request failed'}
 
 
 def dispatch(settings: dict, event: str, instance: dict, source: str, text: str | None = None):
@@ -118,8 +164,13 @@ def dispatch(settings: dict, event: str, instance: dict, source: str, text: str 
         wh = settings.get("webhook") or {}
         if wh.get("enabled") and _events_enabled(wh).get(event):
             _post_webhook(wh, payload)
+        nt = settings.get('ntfy') or {}
+        if nt.get('enabled') and _events_enabled(nt).get(event):
+            result = send_ntfy(nt, payload)
+            if not result['ok']:
+                log.warning('%s', result['error'])
         tg = settings.get("telegram") or {}
         if tg.get("enabled") and _events_enabled(tg).get(event):
             _post_telegram(tg, payload)
     except Exception as e:  # noqa
-        log.warning("push dispatch error: %r", e)
+        log.warning("push dispatch failed")

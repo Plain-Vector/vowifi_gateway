@@ -14,6 +14,10 @@ Never fails the caller (all exceptions swallowed).
 import os
 import sys
 import json
+import hashlib
+import ssl
+import re
+from urllib.parse import urlsplit
 
 
 def load_env():
@@ -41,8 +45,9 @@ def main():
     payload = {"instance": inst_id, "event": event, "args": args}
     # Always append to a local event log so nothing is lost if the manager is down.
     try:
-        os.makedirs("/logs", exist_ok=True)
-        with open("/logs/events.jsonl", "a") as f:
+        journal = os.environ.get("VOWIFI_EVENT_LOG", "/logs/events.jsonl")
+        os.makedirs(os.path.dirname(journal), exist_ok=True)
+        with open(journal, "a") as f:
             f.write(json.dumps(payload) + "\n")
     except Exception:
         pass
@@ -52,8 +57,33 @@ def main():
         import requests
         import urllib3
         urllib3.disable_warnings()
-        requests.post(f"{manager_url.rstrip('/')}/api/engine/event",
-                      json=payload, timeout=3, verify=False)
+        headers = {"X-Engine-Instance": str(inst_id)}
+        try:
+            with open(os.environ.get("VOWIFI_MANAGER_TOKEN_FILE", "/run/vowifi/manager-token")) as f:
+                headers["X-Engine-Token"] = f.read().strip()
+        except OSError:
+            pass
+        session = requests.Session()
+        session.trust_env = False
+        verify = True
+        certificate = os.environ.get("VOWIFI_MANAGER_CERT", "/etc/asterisk/certificate.crt")
+        if headers.get("X-Engine-Token") or os.path.isfile(certificate):
+            # Engines already mount the same certificate used by the manager. Pin its
+            # fingerprint so host.docker.internal works with a self-signed LAN cert.
+            with open(certificate) as f:
+                pem = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", f.read(), re.S).group(0)
+            fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest()
+            class PinnedAdapter(requests.adapters.HTTPAdapter):
+                def init_poolmanager(self, *args, **kwargs):
+                    kwargs['assert_fingerprint'] = fingerprint
+                    return super().init_poolmanager(*args, **kwargs)
+            if urlsplit(manager_url).scheme != 'https':
+                return  # never send the callback credential over plaintext HTTP
+            session.mount('https://', PinnedAdapter())
+            verify = False  # verification is the exact certificate fingerprint above
+        with session:
+            session.post(f"{manager_url.rstrip('/')}/api/engine/event",
+                         json=payload, headers=headers, timeout=3, verify=verify, allow_redirects=False)
     except Exception:
         pass
 

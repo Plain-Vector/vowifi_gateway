@@ -18,13 +18,22 @@ A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SI
 
 ---
 
+## Local test installation
+
+After installing Python development requirements and building the WebUI, run
+`.venv/bin/python control/preview.py` and open https://127.0.0.1:8843. This loopback-only
+instance uses `data/local-preview`, disables Docker/PCSC engine operations and has a
+separate first-run administrator setup. Its one-time code is in
+`data/local-preview/auth/setup-code`. No live SIM calls or SMS are connected.
+
 ## Call Blocking
 
 The integrated **Call Blocking** page manages personal blacklists/whitelists, explicit
 prefix rules, optional ARCEP automated-calling ranges, per-line overrides, local test
 lookups and blocked/monitor history. New installations default to **Monitor**: matching
 calls are logged and still ring. **Enforce** rejects matching incoming calls before
-SIP/WebRTC delivery; **Disabled** allows normal routing. Rule changes require no restart.
+SIP/WebRTC delivery; **Disabled** allows normal routing. Rule changes require no restart. Statistics distinguish stored block/allow rules from
+number-space coverage, accounting for overlapping masks and provider list priorities.
 
 **Saracroche is optional and off by default.** Enable its switch to download the
 Android-compatible phone lists (public FR access verified), choose lists and update
@@ -89,7 +98,13 @@ The installer:
 
 The chosen mode is remembered (persisted under the data dir), so `reload`/`status`/`logs`/`uninstall` don't need `--mode` again. An explicit `--mode` or the `VOWIFI_MODE` env var always overrides.
 
-Accept the self-signed cert, then **provision your SIM** in the dashboard:
+Accept the self-signed cert. The WebUI first asks you to create an administrator using
+the one-time code in `data/auth/setup-code` (read it locally with the service owner's
+permissions, for example `sudo cat data/auth/setup-code`). Choose your username and a
+password of at least 12 characters. All management APIs and WebSocket feeds require login.
+See [security, recovery, engine rollout and ntfy](docs/SECURITY_NOTIFICATIONS.md).
+
+Then **provision your SIM** in the dashboard:
 1. Insert the SIM into the reader; the `/` tab shows detected cards
 2. Click **Provision** → enter the SIM PIN, set the IMEI + AMI secret. The ePDG is auto-derived from the SIM's IMSI and the SMSC is read from the SIM (EF_SMSP); if the SIM doesn't carry an SMSC you'll be asked to type one. **IMEISV** is optional — leave it blank to auto-generate one (14-digit IMEI base + a 2-digit software version); it's used to answer the carrier's IKEv2 `DEVICE_IDENTITY` request.
 3. The engine container spins up and walks the state machine: `TUNNEL_DOWN` → `REGISTERING` → `OK` (IMS registered)

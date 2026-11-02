@@ -59,6 +59,7 @@ def _self_signed(cert_path, key_path):
         f.write(key.private_bytes(serialization.Encoding.PEM,
                                   serialization.PrivateFormat.TraditionalOpenSSL,
                                   serialization.NoEncryption()))
+    os.chmod(key_path, 0o600)
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
@@ -78,6 +79,7 @@ def main():
         if not (os.path.exists(cert_path) and os.path.exists(key_path)):
             print("[run] generating self-signed certificate...")
             _self_signed(cert_path, key_path)
+        os.chmod(key_path, 0o600)
 
     print(f"[run] serving https://{bind}:{port}")
     uvicorn.run("app.main:app", host=bind, port=port,

@@ -22,7 +22,7 @@ const NAV = [
   ['logs', 'Logs', '≣', true],
 ]
 
-export default function App() {
+export default function App({ onLogout, preview }) {
   const [view, setView] = useState('dashboard')
   const [instances, setInstances] = useState([])
   const [cards, setCards] = useState([])
@@ -138,12 +138,14 @@ export default function App() {
               }}>{icon} {t}</button>
           ))}
         </div>
+        <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
         <div className="app-instance-count" style={{ fontSize: 11, color: 'var(--text-faint)', padding: '0 8px 8px' }}>
           {instances.length} SIM{instances.length !== 1 ? 's' : ''} configured
         </div>
       </aside>
 
       <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {preview && <div style={{ padding: 10, background: 'var(--active)', fontSize: 13 }}>Local test installation — no SIM or live calls connected</div>}
         <div className="app-header" style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 16, flexShrink: 0, padding: '24px 24px 0' }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, textTransform: 'capitalize' }}>{view}</h1>
           {/* per-page SIM selectors (SimSelector) handle multi-SIM switching on the views that

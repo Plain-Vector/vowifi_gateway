@@ -52,6 +52,8 @@ def start(inst: dict, settings: dict, dev_mounts: bool = False):
     cfg.write_instance_json(inst, settings)
     from . import blocking
     blocking.publish(iid)
+    from . import auth
+    auth.engine_token(iid)
     base, host_base = _instance_paths(iid)
     ports = inst.get("ports", {})
     client = _client()

@@ -20,4 +20,7 @@
   libpcsclite-dev and swig). A rendered dialplan test is not a real IMS call test.
 - See docs/CALL_BLOCKING.md for architecture, source constraints and rollback;
   docs/GITHUB_WORKFLOW.md for fork/PR workflow. Keep these current with behavior.
+- Management APIs and WebSockets require administrator sessions. Engine callbacks use
+  separate per-instance credentials; preserve their scope and certificate pinning.
+  See docs/SECURITY_NOTIFICATIONS.md for first setup, recovery and safe rollout.
 - Never commit runtime data, SIM/IMS/SIP credentials, tokens, logs or local private patches.

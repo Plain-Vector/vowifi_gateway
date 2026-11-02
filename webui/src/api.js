@@ -12,6 +12,7 @@ async function j(method, path, body) {
   const text = await r.text()
   let data
   try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+  if (r.status === 401 && data.detail === 'Administrator login required') window.dispatchEvent(new Event('vowifi-unauthorized'))
   // detail may be a structured dict (e.g. {code, message}); prefer its message so
   // alerts show readable text instead of "[object Object]".
   const detailMsg = data.detail && typeof data.detail === 'object' ? data.detail.message : data.detail
@@ -49,6 +50,8 @@ function readerBody(readerOrIndex, extra = {}) {
 }
 
 export const api = {
+  auth: (method, path, body) => j(method, '/api/auth' + path, body),
+  testNtfy: () => j('POST', '/api/notifications/ntfy/test'),
   blocking: (method, path, body) => j(method, '/api/blocking' + path, body),
   readers: () => j('GET', '/api/readers'),
   detect: (i = 0) => j('GET', `/api/sim/detect?reader_index=${i}`),
@@ -168,7 +171,10 @@ export function connectWs(onMsg) {
   const open = () => {
     ws = new WebSocket(`${proto}://${location.host}/ws`)
     ws.onmessage = (e) => { try { onMsg(JSON.parse(e.data)) } catch {} }
-    ws.onclose = () => { if (alive) setTimeout(open, 2000) }
+    ws.onclose = (event) => {
+      if (event.code === 4401 || event.code === 4403) { window.dispatchEvent(new Event('vowifi-unauthorized')); return }
+      if (alive) setTimeout(open, 2000)
+    }
     ws.onerror = () => { try { ws.close() } catch {} }
   }
   open()

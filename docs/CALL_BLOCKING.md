@@ -81,7 +81,7 @@ notifications retain their existing behavior for allowed calls.
 ## Persistence
 
 All authoritative state uses the existing `vowifi.sqlite`; migrations are additive
-and idempotent (blocking_migrations v1–v3). Existing messages and calls are not altered.
+and idempotent (blocking_migrations v1–v4). Existing messages and calls are not altered.
 
 | Table | Purpose |
 | --- | --- |
@@ -126,16 +126,19 @@ FastAPI rejects unknown fields, invalid scopes, modes and malformed rules. Dupli
 rules return 409. Existing `/api/engine/event` accepts bounded validated call_filter
 reports, deduplicates them, and stores enforced rejections as closed `blocked` calls.
 
-The upstream application has **no built-in login/access-control mechanism** to reuse.
-Existing reverse-proxy/VPN access control must protect the whole gateway, including
-engine callbacks. The new management routes additionally support
-`VOWIFI_BLOCKING_TOKEN`: when set, every request requires X-Blocking-Token. Set it in
-the manager process environment (systemd drop-in or container configuration); the
-existing installer does not forward this variable automatically. Enter it in the
-Call Blocking page's Access token panel; the browser stores it in sessionStorage.
-Do not put it in URLs or Git. This token does not add authentication to legacy APIs.
-Cross-origin/cross-site browser writes are rejected; configure proxies to preserve
-the public Host. Do not treat this CSRF guard as user authentication.
+The original upstream had no application login. The gateway now requires a configured
+administrator session for all management APIs, WebSocket feeds and API documentation.
+See [login, engine credentials and ntfy configuration](SECURITY_NOTIFICATIONS.md).
+First setup requires a one-time code from the local data/auth/setup-code file; password
+hashes and hashed session tokens are stored in a private SQLite database. Cross-origin
+writes and WebSocket handshakes are rejected. Existing reverse-proxy/VPN controls can
+provide additional protection. Authenticated management responses are not cached.
+
+The optional VOWIFI_BLOCKING_TOKEN remains an *additional* guard on blocking endpoints;
+it does not bypass administrator login. Enter it in the Call Blocking page if configured.
+Engine callbacks use a separate per-instance credential restricted to /api/engine/event;
+these tokens do not grant management access. Upgrade engine notify.py before switching
+the manager to the authenticated version, as described in the rollout instructions.
 
 ## WebUI
 
@@ -255,7 +258,7 @@ update. The last valid selection remains effective if an update fails.
 Validated downloads are cached under data/saracroche-cache in private files, one per
 list ID. A new catalog hash triggers a download; unchanged files are rehashed before
 reuse. Cache corruption triggers a fresh download. Database schema v3 adds provider
-options/catalog and import action/priority. Cache and credentials are not engine-mounted.
+options/catalog and import action/priority. Schema v4 adds cached coverage statistics. Cache and credentials are not engine-mounted.
 The engine snapshot contains rules/action priority only. Deploy the updated matcher
 image before using the new Android mask/allowlist features.
 
@@ -351,3 +354,14 @@ or disable the affected lines individually. For code rollback, restore the previ
 engine/control image and reviewed source in a maintenance window. Additive blocking_*
 tables may remain: old code ignores them. Restore the SQLite backup only if needed;
 doing so also discards later ordinary calls/SMS. Keep production patches intact.
+
+## Rule count versus covered numbers
+
+Provider status now separates block/allow rule counts and effective covered number count.
+Fixed-length # masks are converted to integer intervals; a sweep accounts for overlaps
+and list priority, without enumerating millions of numbers. This is theoretical number
+space coverage, not a claim that all covered numbers are allocated or confirmed spam.
+Personal whitelist/blacklist, independent ARCEP settings, disabled scopes and Monitor
+mode can change the actual outcome for a call. For the FR snapshot checked 2026-11-02:
+2,413 block rules + 130,197 allow rules = 132,610 stored rules; effective Saracroche
+block coverage is 15,463,210 distinct numbers before personal/global policy overrides.

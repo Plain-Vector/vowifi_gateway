@@ -4,7 +4,7 @@ Changes were validated locally, without deployment or GitHub publication.
 
 | Check | Result |
 | --- | --- |
-| Backend pytest suite | 74 passed (Python 3.14); includes actual FastAPI app callbacks |
+| Backend pytest suite | 84 passed (Python 3.14); includes actual FastAPI app callbacks |
 | Python compileall (control/app and engine) | Passed |
 | Shell syntax (install.sh, engine/entrypoint.sh) | Passed |
 | npm ci and production Vite build | Passed (Node 22) |
@@ -42,3 +42,16 @@ local matching, disabling matching, local-file import without implicit enable, a
 
 Regression check: replacing a 100,000-entry provider dataset with a local file does
 not open a nested SQLite read during the write transaction (exclusive-lock case).
+
+Admin/ntfy follow-up: administrator setup, login/logout, hashed credentials, password
+change/session revocation, expiration, brute-force limits, CSRF, WebSocket admission,
+per-engine scope, certificate pinning, ntfy event selection, Unicode payload, token
+redaction and ntfy-only dispatch are tested. A Chromium test against a separate HTTPS
+preview instance created a test administrator, saved ntfy settings, delivered a synthetic
+notification to a loopback HTTP receiver, logged out, confirmed API denial, logged back
+in and checked mobile layout. No SMS or notification was sent to an external service.
+The owner's preview at https://127.0.0.1:8843 remains a separate local runtime.
+
+Coverage statistics are computed without expanding masks; priority/overlap tests pass.
+The verified FR snapshot covers 15,463,210 distinct numbers under provider priorities,
+with 2,413 block and 130,197 allow rules. Counts include potentially unallocated numbers.

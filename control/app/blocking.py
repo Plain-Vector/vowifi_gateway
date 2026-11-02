@@ -52,6 +52,13 @@ def init():
             c.execute("ALTER TABLE blocking_providers ADD COLUMN options TEXT NOT NULL DEFAULT '{}'")
             c.execute("ALTER TABLE blocking_providers ADD COLUMN catalog TEXT NOT NULL DEFAULT '[]'")
             c.execute('INSERT INTO blocking_migrations VALUES(3)')
+        if not c.execute('SELECT 1 FROM blocking_migrations WHERE version=4').fetchone():
+            c.execute("ALTER TABLE blocking_providers ADD COLUMN coverage TEXT NOT NULL DEFAULT '{}'")
+            from .blocking_coverage import calculate
+            for provider in c.execute('SELECT name FROM blocking_providers').fetchall():
+                records = c.execute('SELECT number,match_type,action,priority FROM blocking_imports WHERE provider=?', (provider[0],)).fetchall()
+                c.execute('UPDATE blocking_providers SET coverage=? WHERE name=?', (json.dumps(calculate(records)), provider[0]))
+            c.execute('INSERT INTO blocking_migrations VALUES(4)')
     publish_all()
 
 

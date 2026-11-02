@@ -54,6 +54,11 @@ DEFAULTS = {
             "url": "",
             "events": {"incoming_sms": True, "incoming_call": True},
         },
+        "ntfy": {
+            "enabled": False, "server": "https://ntfy.sh", "topic": "", "token": "",
+            "priority": 3, "include_sms_body": True, "cache": False,
+            "events": {"incoming_sms": True, "incoming_call": True},
+        },
         "telegram": {
             "enabled": False,
             "bot_token": "",
@@ -211,6 +216,7 @@ def _ensure():
     if not os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "w") as f:
             yaml.safe_dump(DEFAULTS, f)
+        os.chmod(CONFIG_PATH, 0o600)
 
 
 def load() -> dict:
@@ -229,7 +235,7 @@ def load() -> dict:
                                     **(data.get("settings", {}).get("rekey", {}))}
         # webhook / telegram: merge one level deep (like tls/retry) so a saved config that
         # predates these keys — or omits the nested `events` map — still gets full defaults.
-        for key in ("webhook", "telegram"):
+        for key in ("webhook", "telegram", "ntfy"):
             saved = data.get("settings", {}).get(key, {}) or {}
             merged = {**DEFAULTS["settings"][key], **saved}
             merged["events"] = {**DEFAULTS["settings"][key]["events"],
@@ -255,6 +261,7 @@ def save(data: dict):
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w") as f:
             yaml.safe_dump(data, f, sort_keys=False)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, CONFIG_PATH)
 
 
@@ -274,12 +281,26 @@ def public_settings() -> dict:
     settings["advertise_address_effective"] = advertise_address(settings)
     settings["advertise_address_managed_by_env"] = advertise_address_managed_by_env()
     settings["advertise_address_detected"] = _host_lan_ipv4() or ""
+    ntfy = settings.get('ntfy', {})
+    settings['ntfy'] = {**ntfy, 'token': '', 'has_token': bool(ntfy.get('token'))}
     return settings
 
 
 def update_settings(patch: dict) -> dict:
     data = load()
     patch = dict(patch or {})
+    if 'ntfy' in patch:
+        if not isinstance(patch['ntfy'], dict):
+            raise ValueError('ntfy settings must be an object')
+        from .notify_push import validate_ntfy
+        ntfy = {**data['settings'].get('ntfy', {}), **patch['ntfy']}
+        ntfy.pop('has_token', None)
+        if ntfy.pop('clear_token', False):
+            ntfy['token'] = ''
+        elif not ntfy.get('token'):
+            ntfy['token'] = data['settings'].get('ntfy', {}).get('token', '')
+        validate_ntfy(ntfy)
+        patch['ntfy'] = ntfy
     for key in ("advertise_address_effective", "advertise_address_managed_by_env",
                 "advertise_address_detected"):
         patch.pop(key, None)

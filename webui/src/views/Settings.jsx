@@ -5,6 +5,8 @@ import PushInfoModal from './PushInfoModal.jsx'
 export default function Settings() {
   const [s, setS] = useState(null)
   const [msg, setMsg] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [info, setInfo] = useState('')   // '' | 'webhook' | 'telegram' — which help modal is open
 
   useEffect(() => { api.settings().then(setS).catch(() => {}) }, [])
@@ -15,6 +17,8 @@ export default function Settings() {
   const updDebug = (patch) => setS((x) => ({ ...x, debug: { ...x.debug, ...patch } }))
   // webhook / telegram helpers: patch the channel object and its nested `events` map.
   const wh = s.webhook || { enabled: false, url: '', events: {} }
+  const nt = s.ntfy || { enabled: false, server: 'https://ntfy.sh', topic: '', token: '', priority: 3, include_sms_body: true, cache: false, events: {} }
+  const updNt = (patch) => upd({ ntfy: { ...nt, ...patch } })
   const tg = s.telegram || { enabled: false, bot_token: '', chat_id: '', events: {} }
   const updWh = (patch) => setS((x) => ({ ...x, webhook: { ...wh, ...patch } }))
   const updWhEv = (k, v) => setS((x) => ({ ...x, webhook: { ...wh, events: { ...(wh.events || {}), [k]: v } } }))
@@ -210,7 +214,7 @@ export default function Settings() {
         <div style={{ marginTop: 12, opacity: tg.enabled ? 1 : .5 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div><label>Bot token</label>
-              <input className="mono" value={tg.bot_token || ''} disabled={!tg.enabled}
+              <input type="password" className="mono" value={tg.bot_token || ''} disabled={!tg.enabled}
                 onChange={(e) => updTg({ bot_token: e.target.value })} placeholder="123456:ABC-DEF..." /></div>
             <div><label>Chat / Channel ID</label>
               <input className="mono" value={tg.chat_id || ''} disabled={!tg.enabled}
@@ -226,6 +230,28 @@ export default function Settings() {
         </div>
       </div>
 
+      <div className="card" style={{ padding: 20 }}>
+        <h3>ntfy notifications</h3>
+        <label><input type="checkbox" style={{ width: 'auto' }} checked={!!nt.enabled} onChange={(e) => updNt({ enabled: e.target.checked })} /> Enable ntfy</label>
+        <label>ntfy server URL<input value={nt.server} onChange={(e) => updNt({ server: e.target.value })} placeholder="https://ntfy.sh" /></label>
+        <label>Topic<input value={nt.topic} onChange={(e) => updNt({ topic: e.target.value })} /></label>
+        <label>Access token<input type="password" autoComplete="new-password" value={nt.token || ''} placeholder={nt.has_token ? 'Token saved — leave blank to keep' : 'Optional bearer token'} onChange={(e) => updNt({ token: e.target.value, clear_token: false })} /></label>
+        {nt.has_token && <button className="btn btn-ghost" onClick={() => updNt({ token: '', clear_token: true, has_token: false })}>Remove saved token</button>}
+        <label>Priority<select value={nt.priority} onChange={(e) => updNt({ priority: Number(e.target.value) })}>{[1,2,3,4,5].map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+        {['incoming_call', 'incoming_sms'].map((event) => <label key={event}><input type="checkbox" style={{ width: 'auto' }} checked={nt.events?.[event] !== false} onChange={(e) => updNt({ events: { ...nt.events, [event]: e.target.checked } })} />{event === 'incoming_call' ? ' Incoming calls' : ' Incoming SMS'}</label>)}
+        <label><input type="checkbox" style={{ width: 'auto' }} checked={!!nt.include_sms_body} onChange={(e) => updNt({ include_sms_body: e.target.checked })} /> Include SMS text in notifications</label>
+        <label><input type="checkbox" style={{ width: 'auto' }} checked={!!nt.cache} onChange={(e) => updNt({ cache: e.target.checked })} /> Allow ntfy server message caching</label>
+        <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Use a private topic with access control for SMS. Save settings before testing.</p>
+        <button className="btn btn-ghost" disabled={!nt.enabled} onClick={async () => { try { const r = await api.testNtfy(); setMsg(r.ok ? 'ntfy test delivered' : r.error) } catch (e) { setMsg(e.message) } }}>Send ntfy test</button>
+      </div>
+      <div className="card" style={{ padding: 20 }}>
+        <h3>Administrator password</h3>
+        <label>Current password<input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
+        <label>New password (at least 12 characters)<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
+        <button className="btn btn-ghost" disabled={newPassword.length < 12 || !currentPassword} onClick={async () => {
+          try { await api.auth('POST', '/password', { current_password: currentPassword, new_password: newPassword }); setCurrentPassword(''); setNewPassword(''); setMsg('Password changed; other sessions signed out') } catch (e) { setMsg(e.message) }
+        }}>Change password</button>
+      </div>
       <div>
         <button className="btn btn-primary" onClick={save}>Save settings</button>
         {msg && <span style={{ marginLeft: 12, color: '#22c55e', fontSize: 13 }}>{msg}</span>}
