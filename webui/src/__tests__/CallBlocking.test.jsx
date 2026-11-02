@@ -214,6 +214,15 @@ describe('explicit settings lifecycle', () => {
     await waitFor(() => expect(section.queryByRole('button', { name: 'Edit' })).toBeNull())
     expect(personalRules).toHaveLength(1)
   })
+  it.each(['666', '1023'])('submits exact service number %s unchanged to the whitelist', async number => {
+    await mount()
+    fireEvent.click(screen.getByRole('tab', { name: 'Whitelist' }))
+    fireEvent.change(screen.getByLabelText('Number or prefix'), { target: { value: number } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }))
+    await screen.findByRole('button', { name: 'Edit' })
+    expect(personalRules).toEqual([expect.objectContaining({ number, kind: 'allow', match_type: 'exact', scope: '*' })])
+    expect(screen.getByText(/Exact service numbers accept/)).toBeTruthy()
+  })
   it('places rule validation errors next to the number and preserves the input', async () => {
     await mount()
     fireEvent.change(screen.getByLabelText('Number or prefix'), { target: { value: 'invalid' } })
