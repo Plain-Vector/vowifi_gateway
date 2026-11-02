@@ -1,4 +1,5 @@
 """Call-filter persistence, migrations and atomic per-engine rule snapshots."""
+from contextlib import closing
 import json
 import os
 import sqlite3
@@ -150,7 +151,7 @@ def publish(iid):
         fd, tmp = tempfile.mkstemp(prefix='.blocking-', dir=path.parent)
         os.close(fd)
         try:
-            with sqlite3.connect(tmp) as c:
+            with closing(sqlite3.connect(tmp)) as c, c:
                 build_snapshot(c, str(iid))
             os.chmod(tmp, 0o644)  # contains only filter rules, no secrets
             with open(tmp, 'rb') as f:
@@ -168,7 +169,7 @@ def publish_all():
 
 def lookup(iid, caller, presentation='allowed'):
     # Same query and schema as the AGI, without writing test events.
-    with _lock, sqlite3.connect(':memory:') as c:
+    with _lock, closing(sqlite3.connect(':memory:')) as c:
         build_snapshot(c, iid)
         return decision(c, caller, presentation)
 

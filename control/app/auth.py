@@ -1,4 +1,5 @@
 """Single-admin login, opaque server-side sessions and per-engine callback tokens."""
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
@@ -23,14 +24,19 @@ SESSION_SECONDS = 8 * 3600
 _lock = threading.RLock()
 
 
+@contextmanager
 def conn():
     directory = Path(cfg.DATA_DIR) / 'auth'
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = directory / 'admin.sqlite'
     c = sqlite3.connect(path, timeout=2)
-    c.row_factory = sqlite3.Row
-    os.chmod(path, 0o600)
-    return c
+    try:
+        c.row_factory = sqlite3.Row
+        os.chmod(path, 0o600)
+        with c:  # Commit/rollback before closing, including errors during __exit__.
+            yield c
+    finally:
+        c.close()
 
 
 def init():

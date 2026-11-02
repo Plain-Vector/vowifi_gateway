@@ -4,6 +4,9 @@ import hashlib
 import json
 import re
 import logging
+import sqlite3
+import traceback
+from pathlib import Path
 import threading
 import time
 from dataclasses import dataclass, field
@@ -40,6 +43,36 @@ class Saracroche:
 
 
 PROVIDERS = {'saracroche': Saracroche()}
+
+
+def _failure_details(exc):
+    """Trace location/type plus allowlisted SQLite diagnostics, never raw transport text."""
+    safe_sqlite_messages = {
+        'unable to open database file', 'too many open files', 'database is locked',
+        'database table is locked', 'database or disk is full',
+        'attempt to write a readonly database', 'database disk image is malformed',
+        'file is not a database', 'Cannot operate on a closed database.',
+    }
+    details, seen = [], set()
+    while exc is not None and id(exc) not in seen and len(details) < 3:
+        seen.add(id(exc))
+        text = type(exc).__name__
+        if isinstance(exc, sqlite3.Error):
+            code = getattr(exc, 'sqlite_errorcode', None)
+            name = getattr(exc, 'sqlite_errorname', '')
+            if type(code) is int:
+                text += f' code={code}'
+            if isinstance(name, str) and re.fullmatch(r'SQLITE_[A-Z0-9_]+', name):
+                text += f' {name}'
+            if str(exc) in safe_sqlite_messages:
+                text += ': ' + str(exc)
+        frames = traceback.StackSummary.extract(
+            traceback.walk_tb(exc.__traceback__), lookup_lines=False)[-6:]
+        if frames:
+            text += ' at ' + ' <- '.join(f'{Path(f.filename).name}:{f.lineno}:{f.name}' for f in frames)
+        details.append(text)
+        exc = exc.__cause__ if exc.__cause__ is not None else exc.__context__
+    return ' caused by '.join(details)
 
 
 def status():
@@ -119,6 +152,7 @@ def update(name='saracroche'):
             blocking.publish_all()
             return {'ok': True}
         except Exception as exc:
+            log.warning('Blocklist provider update failed: %s', _failure_details(exc))
             # Never persist raw transport exception text: it may contain credentials/URLs.
             error = str(exc) if isinstance(exc, saracroche.ProviderError) else UNAVAILABLE if not PROVIDERS[name].supported else 'Download, validation or snapshot publication failed'
             with store._conn() as c:
@@ -139,8 +173,8 @@ async def scheduler():
             for row in status():
                 if row['enabled'] and row['can_auto_update'] and row['auto_update'] and (row['next_update'] is None or row['next_update'] <= time.time()):
                     await asyncio.to_thread(update, row['name'])
-        except Exception:
-            log.warning('Blocklist scheduler iteration failed')
+        except Exception as exc:
+            log.warning('Blocklist scheduler iteration failed: %s', _failure_details(exc))
         await asyncio.sleep(30)
 
 
