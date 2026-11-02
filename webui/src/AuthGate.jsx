@@ -1,15 +1,20 @@
+import { useTranslation } from 'react-i18next'
+import { tx, renderNotice, errorNotice } from './i18n/index.js'
+import LanguageSelector from './i18n/LanguageSelector.jsx'
 import React, { useEffect, useState } from 'react'
 import App from './App.jsx'
 import { api } from './api.js'
 
 export default function AuthGate() {
+  const { i18n } = useTranslation()
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
-  const refresh = () => api.auth('GET', '/status').then(setStatus).catch((e) => setError(e.message))
+  useEffect(() => { if (!status?.authenticated) document.title = tx('common.documentTitle') }, [status?.authenticated, i18n.resolvedLanguage])
+  const refresh = () => api.auth('GET', '/status').then(setStatus).catch((e) => setError(errorNotice(e)))
   useEffect(() => {
     refresh()
     const expired = () => { setStatus((s) => ({ ...s, authenticated: false })); setPassword('') }
@@ -25,18 +30,19 @@ export default function AuthGate() {
           username, password, ...(!status.configured ? { setup_code: code } : {}),
         })
         setPassword(''); setCode(''); await refresh()
-      } catch (err) { setError(err.message) } finally { setBusy(false) }
+      } catch (err) { setError(errorNotice(err)) } finally { setBusy(false) }
     }}>
+      <LanguageSelector />
       <h1 style={{ marginTop: 0, fontSize: 24 }}>VoWiFi Gateway</h1>
-      <h2 style={{ fontSize: 18 }}>{!status ? 'Connecting…' : status.configured ? 'Administrator login' : 'Create administrator'}</h2>
+      <h2 style={{ fontSize: 18 }}>{!status ? tx("authentication.connecting") : status.configured ? tx("authentication.administratorLogin") : tx("authentication.createAdministrator")}</h2>
       {status && <>
-        {!status.configured && <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>On the server, run sudo ./install.sh setup-code from the installation folder. Enter the one-time code below, then choose your login and password.</p>}
-        {!status.configured && <label>Setup code<input autoComplete="off" type="password" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
-        <label>Username<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} /></label>
-        <label>Password<input type="password" autoComplete={status.configured ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={status.configured ? 1 : 12} maxLength={256} required /></label>
-        <button className="btn btn-primary" disabled={busy} style={{ marginTop: 16, width: '100%' }}>{busy ? 'Please wait…' : status.configured ? 'Sign in' : 'Create account'}</button>
+        {!status.configured && <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>{tx("authentication.onTheServerRunSudoInstallShSetupCode")}</p>}
+        {!status.configured && <label>{tx("authentication.setupCode")}<input autoComplete="off" type="password" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
+        <label>{tx("authentication.username")}<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} /></label>
+        <label>{tx("authentication.password")}<input type="password" autoComplete={status.configured ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={status.configured ? 1 : 12} maxLength={256} required /></label>
+        <button className="btn btn-primary" disabled={busy} style={{ marginTop: 16, width: '100%' }}>{busy ? tx("authentication.pleaseWait") : status.configured ? tx("authentication.signIn") : tx("authentication.createAccount")}</button>
       </>}
-      {error && <p role="alert" style={{ color: '#ef4444' }}>{error}</p>}
+      {error && <p role="alert" style={{ color: '#ef4444' }}>{renderNotice(error)}</p>}
     </form>
   </div>
 }

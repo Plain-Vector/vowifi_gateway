@@ -1,8 +1,11 @@
+import { useTranslation } from 'react-i18next'
+import { tx, notice, renderNotice, formatDate } from '../i18n/index.js'
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../api.js'
 import SimSelector from './SimSelector.jsx'
 
 export default function Messages({ selected, subscribe, showToast, instances, cards, setSelected }) {
+  useTranslation()
   const id = selected?.id
   const [threads, setThreads] = useState([])
   const [peer, setPeer] = useState(null)
@@ -47,12 +50,12 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
       setText(''); setPeer(to); setNewTo(''); setComposing(false)
       await loadThreads(); await loadMsgs(to)
       if (res && res.ok === false) {
-        const msg = 'SMS not delivered: ' + (res.error || 'unknown error')
-        showToast ? showToast(msg) : alert(msg)
+        const msg = notice('messages.smsDeliveryError', {detail: res.error || notice('messages.unknownError')})
+        showToast ? showToast(msg) : alert(renderNotice(msg))
       }
     } catch (e) {
-      const msg = 'SMS failed: ' + e.message
-      showToast ? showToast(msg) : alert(msg)
+      const msg = notice('messages.smsSendError', {detail: e.message})
+      showToast ? showToast(msg) : alert(renderNotice(msg))
     }
     setSending(false)
   }
@@ -71,45 +74,49 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
 
   const deleteSelected = async () => {
     if (!selIds.size) return
-    if (!confirm(`Delete ${selIds.size} selected message${selIds.size > 1 ? 's' : ''}?`)) return
+    if (!confirm(tx('messages.deleteSelected', {
+  count: selIds.size
+}))) return
     const forId = id, p = peer
     try {
       await api.deleteMessages(forId, { ids: [...selIds] })
       setSelMode(false); setSelIds(new Set())
       await refreshIfSame(forId, p)
-      toast('Messages deleted')
-    } catch (e) { toast('Delete failed: ' + e.message) }
+      toast(notice("messages.messagesDeleted"))
+    } catch (e) { toast(notice("messages.deleteFailedValue0",{value0:e.message})) }
   }
 
   const deleteThread = async (p, e) => {
     if (e) e.stopPropagation()
-    if (!confirm(`Delete the entire conversation with ${p}? This removes all its messages.`)) return
+    if (!confirm(tx("messages.deleteTheEntireConversationWithThisRemovesAllIts", {
+  p: p
+}))) return
     const forId = id
     try {
       await api.deleteMessages(forId, { peer: p })
       if (peer === p) { setPeer(null); setMsgs([]); setComposing(false) }
       if (String(forId) === String(id)) await loadThreads()
-      toast('Conversation deleted')
-    } catch (e2) { toast('Delete failed: ' + e2.message) }
+      toast(notice("messages.conversationDeleted"))
+    } catch (e2) { toast(notice("messages.deleteFailedValue0",{value0:e2.message})) }
   }
 
   const clearAll = async () => {
     if (!threads.length) return
-    if (!confirm('Delete ALL messages on this line? This cannot be undone.')) return
+    if (!confirm(tx("messages.deleteAllMessagesOnThisLineThisCannotBe"))) return
     const forId = id
     try {
       await api.deleteMessages(forId, { all: true })
       if (String(forId) === String(id)) {
         setPeer(null); setMsgs([]); setComposing(false); await loadThreads()
       }
-      toast('All messages deleted')
-    } catch (e) { toast('Delete failed: ' + e.message) }
+      toast(notice("messages.allMessagesDeleted"))
+    } catch (e) { toast(notice("messages.deleteFailedValue0",{value0:e.message})) }
   }
 
   if (!id) return (
     <div>
       <SimSelector instances={instances} cards={cards} selected={selected} setSelected={setSelected} />
-      <div style={{ color: 'var(--text-dim)' }}>Select a SIM / line to view and send messages.</div>
+      <div style={{ color: 'var(--text-dim)' }}>{tx("messages.selectASimLineToViewAndSendMessages")}</div>
     </div>
   )
 
@@ -123,10 +130,10 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
       <div className="card pane-list" style={{ padding: 12, overflow: 'auto', minHeight: 0 }}>
         <button className="btn btn-primary" style={{ width: '100%', marginBottom: 8 }} onClick={() => {
           setPeer(null); setMsgs([]); setComposing(true)
-        }}>+ New message</button>
+        }}>{tx("messages.newMessage")}</button>
         {threads.length > 0 &&
           <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 10, color: '#ef4444', fontSize: 12 }}
-            onClick={clearAll}>Clear all conversations</button>}
+            onClick={clearAll}>{tx("messages.clearAllConversations")}</button>}
         {threads.map((t) => (
           <div key={t.peer} onClick={() => { setPeer(t.peer); setComposing(false) }} className="hover-row"
             style={{ padding: 10, borderRadius: 10, cursor: 'pointer', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8,
@@ -135,40 +142,40 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
               <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} className="mono">{t.peer}</div>
               <div style={{ fontSize: 12, color: 'var(--text-mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.last_body}</div>
             </div>
-            <button className="row-del" title="Delete conversation" aria-label={`Delete conversation with ${t.peer}`}
+            <button className="row-del" title={tx("messages.deleteConversation")} aria-label={tx("messages.deleteConversationWith", {value1: t.peer})}
               onClick={(e) => deleteThread(t.peer, e)}>🗑</button>
           </div>
         ))}
-        {threads.length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 13, padding: 8 }}>No conversations yet.</div>}
+        {threads.length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 13, padding: 8 }}>{tx("messages.noConversationsYet")}</div>}
       </div>
 
       <div className="card pane-detail" style={{ display: 'flex', flexDirection: 'column', padding: 0, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <div style={{ padding: 14, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minWidth: 0, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-ghost messages-back" onClick={() => {
             setPeer(null); setComposing(false); setMsgs([])
-          }}>← Back</button>
+          }}>{tx("messages.back")}</button>
           {peer ? <span className="mono" style={{
             fontWeight: 600, flex: '1 1 120px', minWidth: 0, overflow: 'hidden',
             textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{peer}</span>
-            : <input placeholder="Recipient number e.g. +1..." value={newTo}
+            : <input placeholder={tx("messages.recipientNumberEG1")} value={newTo}
               onChange={(e) => setNewTo(e.target.value)}
               style={{ maxWidth: '100%', flex: '1 1 160px', minWidth: 0 }} />}
           {peer && msgs.length > 0 && (
             selMode ? (
               <>
-                <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>{selIds.size} selected</span>
+                <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>{tx("messages.selected", {size: selIds.size})}</span>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: '#ef4444' }}
-                  disabled={!selIds.size} onClick={deleteSelected}>Delete</button>
+                  disabled={!selIds.size} onClick={deleteSelected}>{tx("messages.delete")}</button>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                  onClick={() => { setSelMode(false); setSelIds(new Set()) }}>Cancel</button>
+                  onClick={() => { setSelMode(false); setSelIds(new Set()) }}>{tx("messages.cancel")}</button>
               </>
             ) : (
               <>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                  onClick={() => setSelMode(true)}>Select</button>
-                <button className="btn btn-ghost" title="Delete conversation" style={{ padding: '4px 10px', fontSize: 12, color: '#ef4444' }}
-                  onClick={() => deleteThread(peer)}>Delete all</button>
+                  onClick={() => setSelMode(true)}>{tx("messages.select")}</button>
+                <button className="btn btn-ghost" title={tx("messages.deleteConversation")} style={{ padding: '4px 10px', fontSize: 12, color: '#ef4444' }}
+                  onClick={() => deleteThread(peer)}>{tx("messages.deleteAll")}</button>
               </>
             )
           )}
@@ -181,12 +188,12 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
             // but delivery not yet confirmed.
             const delivered = m.status === 'delivered'
             const sent = m.status === 'sent'
-            const statusText = failed ? ' · Failed to deliver'
-              : m.status === 'pending' ? ' · sending…'
-              : sent ? ' · Sent'
-              : delivered ? ' · Delivered ✓'
+            const statusText = failed ? tx("messages.failedToDeliver")
+              : m.status === 'pending' ? tx("messages.sending")
+              : sent ? tx("messages.sent")
+              : delivered ? tx("messages.delivered")
               : ''
-            const statusColor = failed ? '#ef4444' : delivered ? '#22c55e' : 'var(--text-mute)'
+            const statusColor = failed ? '#ef4444' : delivered ? '#22c55e' : "var(--text-mute)"
             const checked = selIds.has(m.id)
             return (
               <div key={m.id} className="msg-row" onClick={() => selMode && toggleSel(m.id)}
@@ -197,7 +204,7 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
                 <div style={{ minWidth: 0, maxWidth: '100%', flex: '1 1 auto' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6,
                     flexDirection: m.direction === 'out' ? 'row' : 'row-reverse' }}>
-                    {failed && <span title={m.error || 'Delivery failed'}
+                    {failed && <span title={m.error || tx("messages.deliveryFailed")}
                       style={{ color: '#ef4444', fontWeight: 800, cursor: 'help', fontSize: 15 }}>❗</span>}
                     <div className="msg-bubble" style={{
                       background: checked ? 'var(--active)' : failed ? 'rgba(239,68,68,.15)' : (m.direction === 'out' ? 'var(--primary)' : 'var(--hover)'),
@@ -207,12 +214,12 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
                   </div>
                   <div style={{ fontSize: 10, color: statusColor,
                     textAlign: m.direction === 'out' ? 'right' : 'left', marginTop: 2 }}>
-                    {new Date(m.ts * 1000).toLocaleString()}
+                    {formatDate(m.ts * 1000)}
                     {statusText}
                   </div>
                   {failed && m.error && (
                     <div className="msg-bubble" style={{ fontSize: 10.5, color: '#ef4444', marginTop: 1,
-                      textAlign: m.direction === 'out' ? 'right' : 'left', padding: 0, background: 'transparent' }}>{m.error}</div>
+                      textAlign: m.direction === 'out' ? 'right' : 'left', padding: 0, background: 'transparent' }}>{renderNotice(m.error)}</div>
                   )}
                 </div>
               </div>
@@ -220,10 +227,10 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
           })}
         </div>
         <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border)', flexShrink: 0, minWidth: 0 }}>
-          <input placeholder="Type a message…" value={text} onChange={(e) => setText(e.target.value)}
+          <input placeholder={tx("messages.typeAMessage")} value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()} style={{ flex: 1, minWidth: 0 }} />
           <button className="btn btn-primary" style={{ flexShrink: 0 }}
-            disabled={sending || (!peer && !newTo)} onClick={send}>Send</button>
+            disabled={sending || (!peer && !newTo)} onClick={send}>{tx("messages.send")}</button>
         </div>
       </div>
       </div>

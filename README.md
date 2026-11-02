@@ -2,6 +2,9 @@
 
 A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SIM into an IMS endpoint you can call/text via standard SIP clients (softphones, desk phones, Asterisk trunks). One SIM = one routable phone number; multiple SIMs can run in parallel (each gets its own engine container + port block).
 
+The WebUI supports **English, Français and Русский**, with a persistent browser language
+selector on login and in the application header. See [localization and upgrade notes](docs/LOCALIZATION.md).
+
 ## Install on a fresh server
 
 Run these commands **on the server where the SIM reader is connected**. You need Linux,
