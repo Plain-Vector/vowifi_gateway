@@ -24,6 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from . import config as cfg
 from . import store, engine, status as status_mod, sim, card, notify_push, lpa, estkme, usbreader
 from .ami import AmiClient
+from . import blocking, blocking_providers
+from .blocking_api import router as blocking_router
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -574,19 +576,23 @@ async def _auto_recover(iid: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store.init()
+    blocking.init()
+    updater = asyncio.create_task(blocking_providers.scheduler())
     poller = asyncio.create_task(status_poller())
     monitor = asyncio.create_task(card_monitor())
     yield
+    updater.cancel()
     poller.cancel()
     monitor.cancel()
     # Reap the cancelled tasks (the monitor may be parked in a to_thread wait for up to
     # its timeout; awaiting keeps shutdown deterministic instead of leaking the error).
-    await asyncio.gather(poller, monitor, return_exceptions=True)
+    await asyncio.gather(poller, monitor, updater, return_exceptions=True)
     for c in hub.ami.values():
         await c.close()
 
 
 app = FastAPI(title="VoWiFi Gateway", lifespan=lifespan)
+app.include_router(blocking_router)
 
 
 # ----------------------------- SIM / readers -----------------------------
@@ -1581,6 +1587,23 @@ async def api_engine_event(payload: dict):
     iid = str(payload.get("instance", ""))
     event = payload.get("event", "")
     args = payload.get("args", [])
+    if event == "call_filter" and len(args) == 1:
+        from .blocking_api import FilterReport
+        if not isinstance(args[0], str) or len(args[0]) > 8192:
+            raise HTTPException(422, "Invalid filter report")
+        try:
+            report = FilterReport.model_validate_json(base64.b64decode(args[0], validate=True))
+        except Exception:
+            raise HTTPException(422, "Invalid filter report")
+        if not cfg.get_instance(iid):
+            raise HTTPException(404, "Unknown instance")
+        result = report.decision.model_dump()
+        fresh = await asyncio.to_thread(blocking.record, iid, report.peer, report.call_id, result, report.ts)
+        if fresh and result["action"] == "reject":
+            rec = store.add_call(iid, "in", report.peer, status="blocked")
+            store.update_call(rec["id"], "blocked", ended=True)
+            await hub.broadcast({"type": "call", "instance": iid, "blocked": True})
+        return {"ok": True}
     if event == "sms_in" and len(args) >= 2:
         try:
             text = base64.b64decode(args[1]).decode(errors="replace")

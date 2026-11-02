@@ -1,4 +1,5 @@
 fastapi>=0.110
+pydantic>=2.6
 uvicorn[standard]>=0.27
 pyscard>=2.0
 panoramisk>=1.4

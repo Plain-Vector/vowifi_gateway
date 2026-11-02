@@ -357,3 +357,19 @@ a { color: inherit; }
     display: none;
   }
 }
+
+/* Call Blocking shares existing theme tokens and remains usable on narrow screens. */
+.blocking-page { display: grid; gap: 16px; max-width: 1200px; }
+.blocking-card { padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.blocking-card h2, .blocking-card p { margin: 0; }
+.blocking-card h2 { font-size: 17px; font-weight: 650; }
+.blocking-card p { font-size: 13px; color: var(--text-dim); overflow-wrap: anywhere; }
+.blocking-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.blocking-row > input, .blocking-row > select { flex: 1 1 170px; width: auto; min-width: 0; }
+.blocking-check { display: flex; align-items: center; gap: 8px; margin: 0; }
+.blocking-check input { width: auto; }
+.blocking-rule { border-top: 1px solid var(--border); padding-top: 10px; }
+.blocking-rule > span { flex: 1; overflow-wrap: anywhere; }
+.blocking-table { overflow-x: auto; }
+.blocking-table table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.blocking-table th, .blocking-table td { padding: 9px; border-bottom: 1px solid var(--border); min-width: 110px; }

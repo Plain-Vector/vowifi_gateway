@@ -15,6 +15,10 @@
 ; logged (that was the original reason _. had been narrowed).
 exten => _.,1,NoOp(Incoming call from ${CALLERID(num)})
 same => n,Set(CALLPEER=${CALLERID(num)})
+; Local SQLite AGI only; fail open if missing, corrupt or over deadline.
+same => n,Set(CB_REJECT=0)
+same => n,AGI(/usr/local/bin/call_filter.py)
+same => n,GotoIf($["${CB_REJECT}" = "1"]?blocked)
 same => n,Progress()
 same => n,Set(FILE(/logs/calls.txt,,,a)=IN call from ${CALLERID(num)} at ${STRFTIME(${EPOCH},,%Y-%m-%d %H:%M:%S)})
 same => n,TrySystem(/usr/local/bin/notify.py call_in "${CALLERID(num)}" &)
@@ -27,6 +31,8 @@ same => n,Answer()
 same => n,Wait(30)
 {% endif %}
 same => n,Hangup()
+same => n(blocked),PJSIPHangup(Decline)
+same => n,Hangup(21)
 ; i (invalid) / t (response timeout) are explicit no-ops so the broad _. never mislogs them.
 exten => i,1,Hangup()
 exten => t,1,Hangup()
@@ -37,8 +43,9 @@ exten => t,1,Hangup()
 ; FALL THROUGH to the broad `_.` pattern (priorities 2-9: Set/Progress/call_in/Dial…) and fire
 ; a phantom SECOND `call_in` (+ a stray Dial) for every call — leaving a ghost 'ringing' row in
 ; the call log. Return() ends the 'h' routine cleanly so no fall-through happens.
-exten => h,1,TrySystem(/usr/local/bin/notify.py call_result in "${CALLPEER}" "${DIALSTATUS}" "${HANGUPCAUSE}" &)
-same => n,Return()
+exten => h,1,GotoIf($["${CB_REJECT}" = "1"]?done)
+same => n,TrySystem(/usr/local/bin/notify.py call_result in "${CALLPEER}" "${DIALSTATUS}" "${HANGUPCAUSE}" &)
+same => n(done),Return()
 
 ; ===== Incoming SMS from the IMS/VoWiFi side =====
 [volte_ims_msg]

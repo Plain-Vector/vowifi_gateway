@@ -3,6 +3,9 @@ const base = ''
 
 async function j(method, path, body) {
   const opt = { method, headers: {} }
+  if (path.startsWith('/api/blocking') && sessionStorage.getItem('blocking-token')) {
+    opt.headers['X-Blocking-Token'] = sessionStorage.getItem('blocking-token')
+  }
   if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body) }
   const r = await fetch(base + path, opt)
   const text = await r.text()
@@ -11,7 +14,7 @@ async function j(method, path, body) {
   // detail may be a structured dict (e.g. {code, message}); prefer its message so
   // alerts show readable text instead of "[object Object]".
   const detailMsg = data.detail && typeof data.detail === 'object' ? data.detail.message : data.detail
-  if (!r.ok) throw Object.assign(new Error(detailMsg || data.error || r.statusText), { status: r.status, data })
+  if (!r.ok) throw Object.assign(new Error((Array.isArray(detailMsg) ? detailMsg.map((e) => e.msg).join('; ') : detailMsg) || data.error || r.statusText), { status: r.status, data })
   return data
 }
 
@@ -45,6 +48,7 @@ function readerBody(readerOrIndex, extra = {}) {
 }
 
 export const api = {
+  blocking: (method, path, body) => j(method, '/api/blocking' + path, body),
   readers: () => j('GET', '/api/readers'),
   detect: (i = 0) => j('GET', `/api/sim/detect?reader_index=${i}`),
   // `reader` (PC/SC reader NAME) lets the backend re-resolve the index at request time —

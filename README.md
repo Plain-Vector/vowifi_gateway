@@ -18,6 +18,25 @@ A **containerized VoWiFi→SIP gateway** that turns a physical VoWiFi-capable SI
 
 ---
 
+## Call Blocking
+
+The integrated **Call Blocking** page manages personal blacklists/whitelists, explicit
+prefix rules, optional ARCEP automated-calling ranges, per-line overrides, local test
+lookups and blocked/monitor history. New installations default to **Monitor**: matching
+calls are logged and still ring. **Enforce** rejects matching incoming calls before
+SIP/WebRTC delivery; **Disabled** allows normal routing. Rule changes require no restart.
+
+Saracroche currently reports **access required**: its public documented database API and
+third-party download permission have not been verified. No private endpoint is used and
+no caller number is sent to the provider. The scheduler/status interface is present,
+but this is not a working Saracroche data feed.
+
+Read [architecture, source investigation, configuration, tests and rollback](docs/CALL_BLOCKING.md)
+before rollout. Preserve local IMS patches and start with a non-production line.
+See [GitHub fork workflow](docs/GITHUB_WORKFLOW.md) for contribution and authentication.
+
+---
+
 ## Screenshots
 
 The control-plane WebUI — dashboard, browser softphone, SMS messaging, and eSIM management (light theme; a dark theme is also built in):
@@ -52,7 +71,7 @@ In **both** modes the reader is owned by the **host's pcscd**, and **pcsc-lite i
 ## Quick Start
 
 ```bash
-git clone https://github.com/pagecat/vowifi_gateway.git
+git clone https://github.com/Plain-Vector/vowifi_gateway.git
 cd vowifi_gateway
 sudo ./install.sh install                 # default: local mode (native control plane)
 # or, fully containerized:

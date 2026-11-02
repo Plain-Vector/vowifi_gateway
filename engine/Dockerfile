@@ -78,6 +78,8 @@ COPY ami_usim.py     /usr/local/bin/ami_usim.py
 COPY swu_ike.py      /usr/local/bin/swu_ike.py
 COPY render.py       /usr/local/bin/render.py
 COPY notify.py       /usr/local/bin/notify.py
+COPY call_filter.py  /usr/local/bin/call_filter.py
+COPY blocking_match.py /usr/local/bin/blocking_match.py
 COPY templates/      /opt/vowifi/templates/
 COPY entrypoint.sh   /entrypoint.sh
 RUN chmod +x /usr/local/bin/*.py /entrypoint.sh

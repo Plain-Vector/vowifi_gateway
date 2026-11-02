@@ -43,6 +43,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # App code + built WebUI, mirroring the repo layout under /app.
 COPY control/ /app/control/
+COPY engine/blocking_match.py /app/engine/blocking_match.py
 COPY --from=webui /webui/dist /app/webui/dist
 
 # Defaults; the installer overrides VOWIFI_DATA/VOWIFI_HOST_DATA/VOWIFI_ADVERTISE_ADDR/port.

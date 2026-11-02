@@ -413,7 +413,7 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
           {calls.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-mute)' }}>No calls yet.</div>}
           {calls.map((c) => {
             const s = (c.status || '').toLowerCase()
-            const color = s === 'answered' ? GREEN : (s === 'rejected' || s === 'busy' || s === 'failed') ? RED
+            const color = s === 'answered' ? GREEN : (s === 'blocked' || s === 'rejected' || s === 'busy' || s === 'failed') ? RED
               : (s === 'no answer' || s === 'cancelled' || s === 'missed') ? '#eab308' : 'var(--text-dim)'
             const dlabel = c.direction === 'in' ? '↙ Incoming' : '↗ Outgoing'
             const peer = (c.peer || '').trim()
@@ -437,6 +437,14 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
                       disabled={reg !== 'registered' || !peer} onClick={(e) => {
                         e.stopPropagation(); phone.current?.unlockAudio(); setNum(peer); phone.current?.call(peer)
                       }}>Call</button>
+                    {peer && <button className="btn btn-ghost" onClick={async (e) => {
+                      e.stopPropagation()
+                      try {
+                        await api.blocking('POST', '/rules', { scope: String(id), kind: 'block', number: peer,
+                          match_type: 'exact', description: 'Added from call history', enabled: true })
+                        showToast('Number added to blacklist for this line')
+                      } catch (err) { showToast(err.message) }
+                    }}>Block this number</button>}
                     <button className="row-del" title="Delete this call" aria-label="Delete this call"
                       onClick={(e) => deleteOneCall(c.id, e)}>🗑</button>
                   </>}
