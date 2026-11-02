@@ -1,5 +1,6 @@
 """Validated management API. Inherits gateway proxy authentication, optional extra token."""
 import os
+import re
 import secrets
 import sqlite3
 from typing import Literal
@@ -56,9 +57,12 @@ class Rule(Strict):
     def normalized(self):
         scope_check(self.scope)
         value = self.model_dump()
-        value['number'] = normalize(self.number, prefix=self.match_type == 'prefix')
+        number = self.number.strip()
+        # Match the existing engine's short-code contract; never turn service codes into +33.
+        short_exact = self.match_type == 'exact' and re.fullmatch(r'[1-9][0-9]{1,5}', number)
+        value['number'] = number if short_exact else normalize(self.number, prefix=self.match_type == 'prefix')
         if not value['number']:
-            raise HTTPException(422, 'Use a French number or international +/00 number; no wildcards or regex')
+            raise HTTPException(422, 'Use an exact 2-6 digit service number starting 1-9, a French number or international +/00 number; no wildcards or regex')
         return value
 
 

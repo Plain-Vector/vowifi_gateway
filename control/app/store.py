@@ -7,6 +7,7 @@ layer by the caller (main.py).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import sqlite3
 import threading
@@ -17,11 +18,16 @@ DB_PATH = os.path.join(DATA_DIR, "vowifi.sqlite")
 _lock = threading.Lock()
 
 
+@contextmanager
 def _conn():
     os.makedirs(DATA_DIR, exist_ok=True)
     c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+    try:
+        c.row_factory = sqlite3.Row
+        with c:
+            yield c
+    finally:
+        c.close()
 
 
 def init():

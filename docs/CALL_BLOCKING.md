@@ -397,3 +397,17 @@ existing `limit`/`offset`. Filters apply before pagination. `allowed` excludes m
 calls that were allowed in Monitor; `would_block` includes only allow decisions with
 `would_block=true`. The response retains `events` and adds `has_more`. No stored schema
 or engine/filter behavior changes are involved.
+
+
+## SQLite lifetime and short personal rules
+
+Control owns each SQLite connection through an explicit closing transaction context.
+Exiting `with sqlite3.connect(...)` alone does not close the connection. Authentication,
+polling, provider scheduler, snapshot publication and lookup must release connections
+on success, rollback and commit/setup failure. See [incident and rollout notes](SQLITE_FD_SERVICE_FIX.md).
+
+Personal whitelist and blacklist rules accept exact ASCII service codes of 2–6 digits,
+starting with 1–9 (for example `666` and `1023`), globally or per SIM. Digits are preserved;
+short codes cannot be prefix rules. Regular French and international normalization and
+personal whitelist precedence are unchanged. Incoming filtering does not apply to
+user-initiated outgoing calls, including service numbers.

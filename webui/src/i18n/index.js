@@ -94,6 +94,7 @@ const authErrors = {
   'Cross-origin request rejected': 'originRejected',
   'Cross-site request rejected': 'originRejected',
   'Use a French number or international +/00 number; no wildcards or regex': 'invalidPhoneNumber',
+  'Use an exact 2-6 digit service number starting 1-9, a French number or international +/00 number; no wildcards or regex': 'invalidPhoneNumber',
   'This rule already exists': 'duplicateRule',
   'Rule not found': 'ruleNotFound',
   'Unknown instance': 'unknownLine',
