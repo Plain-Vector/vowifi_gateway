@@ -257,10 +257,28 @@ ensure_pcscd() {
     elif have zypper;  then pkg_install pcsc-ccid systemd-devel meson ninja flex pkg-config gcc wget
     else pkg_install ccid meson ninja flex gcc wget
     fi
+    # New Debian/Ubuntu versions split systemd.pc from libsystemd.pc.
+    if have systemctl && ! pkg-config --exists systemd; then
+      if have apt-cache && apt-cache show systemd-dev >/dev/null 2>&1; then
+        pkg_install systemd-dev
+      else
+        die "systemd development metadata is missing; install the package providing systemd.pc"
+      fi
+    fi
     _build_pcsclite_host
     PCSC_SOURCE_BUILT=1
   fi
   enable_pcscd_autostart
+  # Replacing binaries/libraries does not update an already running distro daemon.
+  if [ "$PCSC_SOURCE_BUILT" = 1 ]; then
+    if have systemctl; then
+      systemctl restart pcscd.service 2>/dev/null || systemctl restart pcscd
+    elif have rc-service; then
+      rc-service pcscd restart
+    elif have service; then
+      service pcscd restart
+    fi
+  fi
   # pcscd may be socket-activated (daemon starts on first client), so the socket can be absent
   # until a reader is used — that's fine. If it IS present, confirm; else just note it.
   if [ -S /run/pcscd/pcscd.comm ] || { have systemctl && systemctl is-active --quiet pcscd 2>/dev/null; }; then
@@ -334,12 +352,14 @@ ensure_ccid_host() {
 _build_pcsclite_host() {
   # Build + install pcsc-lite $PCSC_VERSION to /usr on the host (client lib + headers + daemon),
   # and install a systemd unit so it runs as the reader daemon. Idempotent.
+  pcsc_systemd_option=""
+  if ! have systemctl; then pcsc_systemd_option="-Dlibsystemd=false"; fi
   tmp=$(mktemp -d)
   ( cd "$tmp" \
     && { curl -fsSLo pcsc.tar.gz "https://github.com/LudovicRousseau/PCSC/archive/refs/tags/${PCSC_VERSION}.tar.gz" \
          || wget -qO pcsc.tar.gz "https://github.com/LudovicRousseau/PCSC/archive/refs/tags/${PCSC_VERSION}.tar.gz"; } \
     && tar xf pcsc.tar.gz && cd "PCSC-${PCSC_VERSION}" \
-    && meson setup builddir --prefix=/usr -Dpolkit=false \
+    && meson setup builddir --prefix=/usr -Dpolkit=false $pcsc_systemd_option \
     && ninja -C builddir && ninja -C builddir install \
   ) || die "failed to build pcsc-lite $PCSC_VERSION from source"
   ldconfig 2>/dev/null || true

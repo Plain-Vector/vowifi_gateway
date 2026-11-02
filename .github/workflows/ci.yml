@@ -103,6 +103,7 @@ jobs:
           sudo ./install.sh setup-code > /tmp/vowifi-setup-code-output
           test -s /tmp/vowifi-setup-code-output
           sudo test -s data/auth/setup-code
+          docker exec vowifi-control python -c "from smartcard.scard import SCardEstablishContext,SCardReleaseContext,SCARD_SCOPE_USER,SCARD_S_SUCCESS; result,context=SCardEstablishContext(SCARD_SCOPE_USER); assert result == SCARD_S_SUCCESS, hex(result); SCardReleaseContext(context); print('Pinned PCSC host/container connection passed')"
           echo "Fresh-server installer and setup-code command passed"
       - name: Installer diagnostics
         if: always()
