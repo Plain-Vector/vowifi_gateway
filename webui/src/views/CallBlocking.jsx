@@ -2,12 +2,14 @@ import { useTranslation } from 'react-i18next'
 import { fieldNotice, tx, RichMessage, notice, renderNotice, statusLabel, decisionReason, localizedError, errorNotice, formatDate, formatNumber } from '../i18n/index.js'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { CommunicationSelect, communicationLabels } from './QuickBlockActions.jsx'
+import SMSFilterHistory from './SMSFilterHistory.jsx'
 import { modes, sources, verdict } from './blockingPresentation.js'
 import { providerValues, same, useBlockingSettings } from './useBlockingSettings.js'
 
 const request = api.blocking
 const date = (ts) => ts ? formatDate(ts * 1000) : '—'
-const empty = { kind: 'block', number: '', match_type: 'exact', description: '', enabled: true }
+const empty = { communication: 'calls', kind: 'block', number: '', match_type: 'exact', description: '', enabled: true }
 
 export default function CallBlocking({ instances, showToast }) {
   const localizationId = React.useId()
@@ -156,7 +158,7 @@ export default function CallBlocking({ instances, showToast }) {
         {(settingsForm.dirty || providerDirty) && <span className="blocking-badge monitor">{tx("blocking.unsavedChanges")}</span>}
       </div>
       <nav className="blocking-row" aria-label={tx("blocking.callBlockingSections")}>
-        {[['filtering', tx("blocking.filtering")], ['saracroche', tx("blocking.saracroche2")], ['personal-lists', tx("blocking.personalLists")], ['number-test', tx("blocking.numberTest")], ['call-history', tx("blocking.callHistory")]].map(([id, text]) => <a key={id} href={'#' + id}>{text}</a>)}
+        {[['filtering', tx("blocking.filtering")], ['saracroche', tx("blocking.saracroche2")], ['personal-lists', tx("blocking.personalLists")], ['number-test', tx("blocking.numberTest")], ['call-history', tx("blocking.callHistory")], ['sms-history', tx('sms.history')]].map(([id, text]) => <a key={id} href={'#' + id}>{text}</a>)}
       </nav>
       <label>{tx("blocking.settingsAndPersonalRulesFor")}<select value={scope} disabled={saving || busy} onChange={(e) => { if (!settingsForm.dirty || window.confirm(tx("blocking.discardUnsavedSettingsForThisScope"))) setScope(e.target.value) }}>
           <option value="*">{tx("blocking.globalAllLines")}</option>
@@ -190,6 +192,12 @@ export default function CallBlocking({ instances, showToast }) {
         <p>{inheritance('mode')}{changed('mode')}</p>
         {scope !== '*' && <button className="btn btn-ghost" onClick={() => inherit('mode')}>{tx("blocking.inheritMode")}</button>}
         {scope !== '*' && settings.global.mode === 'disabled' && <p role="status">{tx("blocking.globalDisabledOverridesThisLineSModeAtRuntime")}</p>}
+        <label>{tx('sms.filteringMode')}<select aria-label={tx('sms.filteringMode')} value={effective.sms_mode || 'disabled'} onChange={e => {
+          if (e.target.value !== 'enforce' || window.confirm(tx('sms.enforceConfirm'))) config('sms_mode', e.target.value)
+        }}>{['disabled','monitor','enforce'].map(value => <option key={value} value={value}>{tx(modes[value])}</option>)}</select></label>
+        <p>{tx('sms.modeHelp')} {inheritance('sms_mode')}{changed('sms_mode')}</p>
+        {scope !== '*' && <button className="btn btn-ghost" onClick={() => inherit('sms_mode')}>{tx('sms.inherit')}</button>}
+        {scope !== '*' && settings.global.sms_mode === 'disabled' && <p>{tx('sms.globalDisabled')}</p>}
         {[
           ['arcep', tx("blocking.arcepAutomatedCallingRanges"), tx("blocking.frenchRangesReservedForAutomatedCallingLegitimateBusinessesAnd")],
           ['block_withheld', tx("blocking.withheldCallerIds"), tx("blocking.theCallerDeliberatelyHidesTheirNumberDoctorsAndOther")],
@@ -280,6 +288,7 @@ export default function CallBlocking({ instances, showToast }) {
       <form className="blocking-row" onSubmit={saveRule}>
         <label className="blocking-field">{tx("blocking.numberOrPrefix")}<input disabled={busy} aria-invalid={!!ruleErrors.number} aria-describedby={ruleErrors.number ? 'rule-number-error' : undefined} required maxLength={128} aria-label={tx("blocking.numberOrPrefix")} placeholder={tx("blocking.0612345678Or33612")} value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />{ruleErrors.number && <small id="rule-number-error" role="alert">{renderNotice(ruleErrors.number)}</small>}</label>
         <select id={localizationId + '-1'} disabled={busy} aria-label={tx("blocking.matchType")} value={form.match_type} onChange={(e) => setForm({ ...form, match_type: e.target.value })}><option value="exact">{tx("blocking.completeNumber")}</option><option value="prefix">{tx("blocking.explicitPrefix")}</option></select>
+        <CommunicationSelect value={form.communication || 'calls'} disabled={busy} onChange={communication => setForm({ ...form, communication })} />
         <input disabled={busy} maxLength={500} aria-label={tx("blocking.description")} placeholder={tx("blocking.optionalDescription")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         <label className="blocking-check"><input disabled={busy} type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />{tx("blocking.enabled")}</label>
         <button disabled={busy || !ready} className="btn btn-primary">{editId ? tx("blocking.save") : tx("blocking.add")}</button>
@@ -291,6 +300,7 @@ export default function CallBlocking({ instances, showToast }) {
         <label className="blocking-check"><input type="checkbox" disabled={busy} checked={!!r.enabled} onChange={(e) => run(() => {
           const { id, ...body } = r; return request('PUT', '/rules/' + id, { ...body, enabled: e.target.checked })
         })} /><span className="mono">{r.number}{r.match_type === 'prefix' ? '…' : ''}</span></label>
+        <span>{tx(communicationLabels[r.communication || 'calls'])}</span>
         <span>{r.match_type === 'prefix' ? tx("blocking.prefix") : tx("blocking.exact")} · {r.description || tx("blocking.noDescription")}</span>
         <button className="btn btn-ghost" disabled={busy} onClick={() => { const { id, scope: _, ...body } = r; setForm({ ...body, enabled: !!body.enabled }); setEditId(id) }}>{tx("blocking.edit")}</button>
         <button className="btn btn-danger" disabled={busy} onClick={() => run(async () => { await request('DELETE', '/rules/' + r.id); showToast(notice("blocking.personalRuleDeleted")) })}>{tx("blocking.delete")}</button>
@@ -331,5 +341,6 @@ export default function CallBlocking({ instances, showToast }) {
       {!events.length && <p>{tx("blocking.noEvents")}</p>}
       <div className="blocking-row"><span>{tx("blocking.page", {value1: Math.floor(offset / 50) + 1})}</span><button className="btn btn-ghost" disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>{tx("blocking.previous")}</button><button className="btn btn-ghost" disabled={!hasMore} onClick={() => setOffset(offset + 50)}>{tx("blocking.next")}</button><button className="btn btn-ghost" onClick={load}>{tx("blocking.refreshHistory")}</button></div>
     </section>
+    <SMSFilterHistory instances={instances} />
   </div>
 }

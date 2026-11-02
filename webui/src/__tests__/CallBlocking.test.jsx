@@ -53,6 +53,7 @@ beforeEach(async () => {
       if (method === 'DELETE') { personalRules = personalRules.filter(rule => rule.id !== Number(url.pathname.split('/').at(-1))); return { ok: true } }
       return { rules: personalRules.filter(rule => rule.scope === scope && rule.kind === url.searchParams.get('kind')) }
     }
+    if (url.pathname === '/sms-events') return { events: [], has_more: false }
     if (url.pathname === '/events') return { events: structuredClone(historyEvents), has_more: false }
     throw new Error('Unexpected request ' + method + ' ' + path)
   })

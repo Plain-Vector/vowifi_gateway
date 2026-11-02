@@ -3,6 +3,7 @@ import { tx, notice, statusLabel, formatDate } from '../i18n/index.js'
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '../api.js'
 import { Softphone as Phone } from '../softphone.js'
+import QuickBlockActions from './QuickBlockActions.jsx'
 import SimSelector from './SimSelector.jsx'
 
 const GREEN = '#22c55e', RED = '#ef4444'
@@ -442,14 +443,7 @@ export default function Softphone({ selected, subscribe, instances, cards, setSe
                       disabled={reg !== 'registered' || !peer} onClick={(e) => {
                         e.stopPropagation(); phone.current?.unlockAudio(); setNum(peer); phone.current?.call(peer)
                       }}>{tx("softphone.call")}</button>
-                    {peer && <button className="btn btn-ghost" onClick={async (e) => {
-                      e.stopPropagation()
-                      try {
-                        await api.blocking('POST', '/rules', { scope: String(id), kind: 'block', number: peer,
-                          match_type: 'exact', description: 'Added from call history', enabled: true })
-                        showToast(notice("softphone.numberAddedToBlacklistForThisLine"))
-                      } catch (err) { showToast(err.message) }
-                    }}>{tx("softphone.blockThisNumber")}</button>}
+                    {peer && <QuickBlockActions key={String(id) + peer} instance={id} peer={peer} context="calls" showToast={showToast} />}
                     <button className="row-del" title={tx("softphone.deleteThisCall")} aria-label={tx("softphone.deleteThisCall")}
                       onClick={(e) => deleteOneCall(c.id, e)}>🗑</button>
                   </>}

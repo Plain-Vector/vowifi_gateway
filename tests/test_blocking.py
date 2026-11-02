@@ -214,7 +214,8 @@ def test_rendered_dialplan_routing(external, webrtc):
         assert 'PJSIP/browser' in incoming
     if not external and not webrtc:
         assert 'Answer()' in incoming
-    assert 'AGI(' not in rest
+    assert 'call_filter.py' not in rest
+    assert 'AGI(' not in rest.split('; ===== Outgoing call', 1)[1]
     assert 'Dial(PJSIP/${EXTEN}@volte_ims,35)' in rest
     assert 'MessageSend(pjsip:volte_ims/' in rest
 

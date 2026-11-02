@@ -95,6 +95,7 @@ const authErrors = {
   'Cross-site request rejected': 'originRejected',
   'Use a French number or international +/00 number; no wildcards or regex': 'invalidPhoneNumber',
   'Use an exact 2-6 digit service number starting 1-9, a French number or international +/00 number; no wildcards or regex': 'invalidPhoneNumber',
+  'This rule is disabled; edit it in Personal lists before blocking': 'disabledQuickRule',
   'This rule already exists': 'duplicateRule',
   'Rule not found': 'ruleNotFound',
   'Unknown instance': 'unknownLine',
@@ -111,6 +112,8 @@ export function localizedError(key, values) {
 }
 
 const decisionReasons = {
+  'Local SMS lookup failed; SMS allowed': 'sms.lookupFailed',
+  'SMS policy handoff failed; SMS allowed': 'sms.handoffFailed',
   'No enabled rule matched': 'blocking.noMatchReason',
   'Filtering disabled': 'blocking.disabledReason',
   'Personal whitelist': 'blocking.whitelistSource',
