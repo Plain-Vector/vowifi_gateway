@@ -1,5 +1,9 @@
 # Installing this branch for a production-line test
 
+**Already running the authenticated call-blocking release?** For the subsequent settings
+persistence/UI fix, follow [Control-only update](BLOCKING_SETTINGS_FIX.md). That fix does
+not require the Engine rebuild described below for the initial feature rollout.
+
 Source: https://github.com/Plain-Vector/vowifi_gateway/tree/codex/call-blocking
 
 This is a testing branch. Real carrier/SIM calls and the installation's private IMS

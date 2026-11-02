@@ -373,3 +373,10 @@ a { color: inherit; }
 .blocking-table { overflow-x: auto; }
 .blocking-table table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
 .blocking-table th, .blocking-table td { padding: 9px; border-bottom: 1px solid var(--border); min-width: 110px; }
+
+.blocking-card fieldset { border: 1px solid var(--border, #475569); border-radius: 8px; padding: 1rem; min-width: 0; }
+.blocking-card fieldset p { max-width: 80ch; }
+.blocking-save { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 1rem 0; border-top: 1px solid #475569; }
+.blocking-card fieldset:disabled { opacity: .65; }
+.blocking-save { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.blocking-card fieldset > div { margin-block: 1rem; }

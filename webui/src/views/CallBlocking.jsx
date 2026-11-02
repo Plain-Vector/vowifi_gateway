@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { providerValues, same, useBlockingSettings } from './useBlockingSettings.js'
 
 const request = api.blocking
 const date = (ts) => ts ? new Date(ts * 1000).toLocaleString() : '—'
@@ -9,7 +10,13 @@ export default function CallBlocking({ instances, showToast }) {
   const [scope, setScope] = useState('*')
   const generation = useRef(0)
   const [loadedScope, setLoadedScope] = useState(null)
-  const [settings, setSettings] = useState(null)
+  const settingsForm = useBlockingSettings(request, scope)
+  const [providerDraft, setProviderDraft] = useState(null)
+  const [providerSaved, setProviderSaved] = useState(null)
+  const [providerState, setProviderState] = useState('Loading')
+  const [providerError, setProviderError] = useState('')
+  const providerEpoch = useRef(0)
+  const providerDirty = providerDraft && !same(providerDraft, providerSaved)
   const [rules, setRules] = useState([])
   const [events, setEvents] = useState([])
   const [provider, setProvider] = useState(null)
@@ -35,18 +42,17 @@ export default function CallBlocking({ instances, showToast }) {
     try {
       const q = new URLSearchParams({ scope, kind, search })
       if (filter !== 'all') q.set('enabled', filter)
-      const [s, r, e, p] = await Promise.all([
-        request('GET', '/settings?' + new URLSearchParams({ scope })),
+      const [r, e, p] = await Promise.all([
         request('GET', '/rules?' + q),
         request('GET', '/events?' + new URLSearchParams({ ...(scope === '*' ? {} : { instance: scope }), limit: 50, offset })),
         request('GET', '/providers'),
       ])
       if (current !== generation.current) return
       setLoadedScope(scope)
-      setSettings(s); setRules(r.rules); setEvents(e.events); setProvider(p.providers[0]); setError('')
+      setRules(r.rules); setEvents(e.events); setProvider(p.providers[0]); setError('')
     } catch (e) { if (current === generation.current) setError(e.message) }
   }, [scope, kind, search, filter, offset])
-  useEffect(() => { load(); const timer = setInterval(load, 15000); return () => clearInterval(timer) }, [load])
+  useEffect(() => { load(); const timer = setInterval(load, 15000); return () => { clearInterval(timer); ++generation.current } }, [load])
   useEffect(() => { setEditId(null); setForm({ ...empty, kind }); setOffset(0); setResult(null) }, [scope, kind])
 
   async function run(fn) {
@@ -54,114 +60,153 @@ export default function CallBlocking({ instances, showToast }) {
     try { await fn(); await load() } catch (e) { setError(e.message) }
     finally { setBusy(false) }
   }
-  async function config(key, value) {
-    const next = { ...(scope === '*' ? settings.global : settings.override), [key]: value }
-    if (value === null) delete next[key]
-    if (value !== null) setSettings((previous) => ({ ...previous, effective: { ...previous.effective, [key]: value } }))
-    await run(async () => {
-      setSettings(await request('PUT', '/settings?' + new URLSearchParams({ scope }), next))
-      if (key === 'saracroche' && value === true && provider?.connection?.source === 'remote') {
-        const result = await request('POST', '/providers/saracroche/update')
-        if (!result.ok) showToast(result.error)
-      }
-    })
+  useEffect(() => {
+    if (provider && providerDraft === null) {
+      const values = providerValues(provider)
+      setProviderDraft(values); setProviderSaved(values); setProviderState('Saved')
+    }
+  }, [provider])
+  useEffect(() => () => { ++providerEpoch.current }, [])
+  useEffect(() => {
+    const warn = (event) => { if (settingsForm.dirty || providerDirty) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [settingsForm.dirty, providerDirty])
+  function providerEdit(key, value) {
+    setProviderDraft(p => ({ ...p, [key]: value })); setProviderState('Unsaved changes'); setProviderError('')
+  }
+  async function providerSave() {
+    const id = ++providerEpoch.current
+    setProviderState('Saving'); setProviderError('')
+    try {
+      await request('PUT', '/providers/saracroche', providerDraft)
+      const result = await request('GET', '/providers')
+      if (id !== providerEpoch.current) return
+      const values = providerValues(result.providers[0])
+      if (!same(values, providerDraft)) throw new Error('Server values differ from submitted provider settings')
+      setProvider(result.providers[0]); setProviderDraft(values); setProviderSaved(values); setProviderState('Saved')
+    } catch (e) { if (id === providerEpoch.current) { setProviderState('Error'); setProviderError(e.message) } }
   }
   const ready = loadedScope === scope
-  const effective = ready ? settings?.effective : null
+  const settings = settingsForm.server
+  const effective = settings && settingsForm.draft ? { ...settings.global, ...settingsForm.draft } : null
+  const saving = ['Saving', 'Loading'].includes(settingsForm.status)
+  function config(key, value) {
+    if (key === 'mode' && value === 'enforce' && effective.mode !== 'enforce' && !window.confirm('Enforce can reject legitimate incoming calls. Continue editing this mode? Changes apply only after Save changes.')) return
+    settingsForm.edit(key, value)
+  }
+  function inherit(key) { settingsForm.edit(key, undefined) }
+  const inheritance = (key) => scope === '*' ? 'Global default' : Object.hasOwn(settingsForm.draft, key) ? 'Line override' : 'Inherited from Global'
+  const changed = (key) => !same(settingsForm.draft?.[key], settingsForm.saved?.[key]) ? ' · modified locally' : ''
+  const savingProvider = ['Saving', 'Loading'].includes(providerState)
 
   return <div className="blocking-page">
     <div className="card blocking-card">
       <label>Settings and personal rules for
-        <select value={scope} onChange={(e) => setScope(e.target.value)}>
+        <select value={scope} disabled={saving || busy} onChange={(e) => { if (!settingsForm.dirty || window.confirm('Discard unsaved settings for this scope?')) setScope(e.target.value) }}>
           <option value="*">Global — all lines</option>
           {instances.map((i) => <option key={i.id} value={String(i.id)}>{i.name || i.msisdn || i.id}</option>)}
         </select>
       </label>
       <p>Line settings inherit global values unless overridden. Global and line rules both apply; any personal whitelist match wins.</p>
       <details><summary>Access token (if configured by administrator)</summary>
-        <form onSubmit={(e) => { e.preventDefault(); sessionStorage.setItem('blocking-token', token); load() }} className="blocking-row">
+        <form onSubmit={(e) => { e.preventDefault(); sessionStorage.setItem('blocking-token', token); load(); if (!settingsForm.draft) settingsForm.discard() }} className="blocking-row">
           <input aria-label="Call Blocking access token" type="password" value={token} onChange={(e) => setToken(e.target.value)} />
           <button className="btn btn-ghost">Connect</button>
         </form>
       </details>
       {error && <div role="alert" style={{ color: '#ef4444' }}>{error}</div>}
     </div>
-    {effective && <div className="card blocking-card">
-      <h2>Operation mode</h2>
-      <label className="blocking-check"><input type="checkbox" disabled={busy || (scope !== '*' && settings.global.mode === 'disabled')} checked={effective.mode !== 'disabled'}
-        onChange={(e) => config('mode', e.target.checked ? 'monitor' : 'disabled')} />Filtering enabled</label>
-      <select aria-label="Operation mode" disabled={busy || (scope !== '*' && settings.global.mode === 'disabled')} value={effective.mode} onChange={(e) => config('mode', e.target.value)}>
-        <option value="disabled">Disabled — no filtering</option><option value="monitor">Monitor — log matches, allow calls</option>
-        <option value="enforce">Enforce — reject matching calls (603 Decline)</option>
-      </select>
-      {scope !== '*' && <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/settings?' + new URLSearchParams({ scope }), {}))}>Reset all line settings to global</button>}
-      {[
-        ['arcep', 'Block ARCEP verified automated-calling ranges (optional; may include legitimate services)'],
-        ['block_withheld', 'Block withheld caller IDs'], ['block_unavailable', 'Block unavailable / invalid caller IDs'],
-      ].map(([key, label]) => <div key={key} className="blocking-row">
-        <label className="blocking-check"><input type="checkbox" disabled={busy} checked={effective[key]} onChange={(e) => config(key, e.target.checked)} />{label}</label>
-        {scope !== '*' && Object.hasOwn(settings.override, key) && <button className="btn btn-ghost" disabled={busy} onClick={() => config(key, null)}>Inherit</button>}
-      </div>)}
-      {scope !== '*' && settings.global.mode === 'disabled' && <p>Global filtering is disabled for every line. Enable it in Global settings first.</p>}
-      {scope !== '*' && <p>Mode: {Object.hasOwn(settings.override, 'mode') ? 'line override' : 'inherited from global'}.</p>}
-      <a href="https://www.arcep.fr/la-regulation/grands-dossiers-thematiques-transverses/la-numerotation.html" target="_blank" rel="noreferrer">ARCEP numbering plan — verified 2 November 2026</a>
-    </div>}
-    {provider && <div className="card blocking-card">
-      <h2>Saracroche — optional database</h2>
-      {effective && <label className="blocking-check"><input type="checkbox" role="switch" disabled={busy}
-        checked={effective.saracroche} onChange={(e) => config('saracroche', e.target.checked)} />Enable Saracroche for {scope === '*' ? 'all lines by default' : 'this line'}</label>}
-      {effective && scope !== '*' && Object.hasOwn(settings.override, 'saracroche') && <button className="btn btn-ghost" disabled={busy} onClick={() => config('saracroche', null)}>Inherit global Saracroche setting</button>}
-      <label>Database source<select aria-label="Saracroche source" disabled={busy} value={provider.connection.source} onChange={(e) => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), source: e.target.value }))}><option value="remote">Saracroche server — Android protocol</option><option value="local">Local file import</option></select></label>
-      <strong>{provider.status === 'local_ready' ? 'Local database ready' : provider.status === 'access_required' ? 'No database — remote access required' : 'Remote source available'}</strong>
-      {effective && <p>{!effective.saracroche ? 'Off: Saracroche rules are not applied to this scope.' : !provider.entries ? 'Enabled, but no database is loaded: Saracroche cannot block any calls yet.' : 'Database matching enabled. The selected operation mode controls whether calls are monitored or rejected.'}</p>}
-      <p>Lists from <a href="https://saracroche.org/" target="_blank" rel="noreferrer">Saracroche</a>. Author: <a href="https://cbouvat.com" target="_blank" rel="noreferrer">Camille Bouvat</a> / <a href="https://saracroche.org/fr/legal-notice/" target="_blank" rel="noreferrer">La bonne patte</a>. Database license: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0 — noncommercial use, attribution and share-alike</a>. Commercial use needs separate terms from Saracroche.</p>
-      <p>Import a phone blocking list in the Android NDJSON format (name and pattern records). Do not import SMS or allow lists here. Importing does not enable Saracroche.</p>
-      {provider.connection.source === 'local' && <form className="blocking-row" onSubmit={(e) => { e.preventDefault(); run(async () => {
+    {settingsForm.error && <p role="alert">{settingsForm.error} {!settingsForm.draft && <button className="btn btn-ghost" onClick={settingsForm.discard}>Retry settings load</button>}</p>}
+    {effective && <section className="card blocking-card" aria-label="Filtering settings">
+      <h2>{scope === '*' ? 'Global filtering settings' : 'Line filtering settings'}</h2>
+      <p>Global values are defaults for all SIMs. A line override affects only the selected SIM. Global Disabled is an emergency stop for every line.</p>
+      <div className="blocking-save" aria-live="polite">
+        <strong>{settingsForm.status === 'Error' ? 'Error — edits retained' : settingsForm.dirty && !saving ? 'Unsaved changes' : settingsForm.status === 'Unsaved changes' ? 'Saved' : settingsForm.status}</strong>
+        <button className="btn btn-primary" disabled={!settingsForm.dirty || saving} onClick={async () => { await settingsForm.save(); await load() }}>Save changes</button>
+        <button className="btn btn-ghost" disabled={saving || !settingsForm.dirty} onClick={settingsForm.discard}>Discard changes</button>
+      </div>
+      <fieldset disabled={saving}>
+        <legend>Operation mode</legend>
+        <p>Disabled: filtering is inactive. Monitor: evaluate and log rules, always allow calls. Enforce: reject matching incoming calls. Enabling a rule source does not enable enforcement.</p>
+        <label>Operation mode<select aria-label="Operation mode" value={effective.mode} onChange={e => config('mode', e.target.value)}>
+          <option value="disabled">Disabled</option><option value="monitor">Monitor</option><option value="enforce">Enforce</option>
+        </select></label>
+        <p>{inheritance('mode')}{changed('mode')}</p>
+        {scope !== '*' && <button className="btn btn-ghost" onClick={() => inherit('mode')}>Inherit mode</button>}
+        {scope !== '*' && settings.global.mode === 'disabled' && <p role="status">Global Disabled overrides this line's mode at runtime. Enable filtering globally first.</p>}
+        {[
+          ['arcep', 'ARCEP automated-calling ranges', 'French ranges reserved for automated calling. Legitimate businesses and services may use them; review Monitor results before enforcing.'],
+          ['block_withheld', 'Withheld caller IDs', 'The caller deliberately hides their number. Doctors and other legitimate callers may do this.'],
+          ['block_unavailable', 'Unavailable / invalid caller IDs', 'No usable number was supplied. Network or international routing issues may affect legitimate calls.'],
+          ['saracroche', 'Enable Saracroche matching', 'Use the locally loaded database for this scope. This does not download data or enable Enforce.'],
+        ].map(([key, label, help]) => <div key={key}>
+          <label className="blocking-check"><input type="checkbox" checked={!!effective[key]} onChange={e => config(key, e.target.checked)} />{label}</label>
+          <p>{help}<br />{inheritance(key)}{changed(key)}</p>
+          {scope !== '*' && Object.hasOwn(settingsForm.draft, key) && <button className="btn btn-ghost" onClick={() => inherit(key)}>Inherit {label}</button>}
+        </div>)}
+      </fieldset>
+      {scope !== '*' && <button className="btn btn-danger" disabled={saving} onClick={() => {
+        if (window.confirm('Reset all line settings to Global? This changes the draft; use Save changes to apply.')) Object.keys(settingsForm.draft).forEach(inherit)
+      }}>Reset all line settings to global</button>}
+      <a href="https://www.arcep.fr/la-regulation/grands-dossiers-thematiques-transverses/la-numerotation.html" target="_blank" rel="noreferrer">ARCEP numbering plan</a>
+    </section>}
+    {provider && providerDraft && <section className="card blocking-card" aria-label="Saracroche database settings">
+      <h2>Saracroche database — shared by all SIMs</h2>
+      <p>Matching is enabled separately above for Global or a line. Database connection and schedule below are shared by every line. Save connection changes before downloading.</p>
+      <p>Lists from <a href="https://saracroche.org/" target="_blank" rel="noreferrer">Saracroche</a>. Author: <a href="https://cbouvat.com" target="_blank" rel="noreferrer">Camille Bouvat</a> / La bonne patte. License: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0 — noncommercial, attribution and share-alike</a>. Commercial use needs separate terms.</p>
+      <div className="blocking-save" aria-live="polite">
+        <strong>{providerState === 'Error' ? 'Error — edits retained' : providerDirty && !savingProvider ? 'Unsaved changes' : providerState === 'Unsaved changes' ? 'Saved' : providerState}</strong>
+        <button className="btn btn-primary" disabled={!providerDirty || savingProvider || busy} onClick={providerSave}>Save database changes</button>
+        <button className="btn btn-ghost" disabled={!providerDirty || savingProvider || busy} onClick={() => { setProviderDraft(providerSaved); setProviderState('Saved'); setProviderError('') }}>Discard database changes</button>
+      </div>
+      <fieldset disabled={savingProvider || busy}>
+        <legend>Database connection and updates</legend>
+        <label>Database source<select aria-label="Saracroche source" value={providerDraft.source} onChange={e => providerEdit('source', e.target.value)}><option value="remote">Remote Saracroche database</option><option value="local">Local Android NDJSON file</option></select></label>
+        {providerDraft.source === 'remote' ? <>
+          <label className="blocking-check"><input type="checkbox" checked={providerDraft.auto_update} onChange={e => providerEdit('auto_update', e.target.checked)} />Automatic database updates</label>
+          <p>Automatic downloads run only while Saracroche matching is enabled for at least one scope. They do not change the enforcement mode.</p>
+          <label>Update interval (hours)<input type="number" min="1" max="720" value={providerDraft.interval_hours} onChange={e => providerEdit('interval_hours', e.target.value === '' ? '' : Number(e.target.value))} /></label>
+          <label>Country codes<input aria-label="Saracroche country codes" value={providerDraft.country_codes} onChange={e => providerEdit('country_codes', e.target.value.toUpperCase())} /></label>
+          <p>Comma-separated two-letter country codes, for example FR. List selection is applied at the next database update.</p>
+          <button className="btn btn-ghost" onClick={() => providerEdit('selected_list_ids', null)}>Use Android default lists</button>
+          <p>{providerDraft.selected_list_ids === null ? 'Android default selection' : 'Explicit list selection'} — allow/block priorities are preserved; lower priority values win.</p>
+          {provider.catalog.map(list => <label className="blocking-check" key={list.id}>
+            <input type="checkbox" checked={providerDraft.selected_list_ids === null ? (list.is_enabled_by_default ?? list.selected) : providerDraft.selected_list_ids.includes(list.id)} onChange={e => {
+              const ids = providerDraft.selected_list_ids ?? provider.catalog.filter(i => i.is_enabled_by_default ?? i.selected).map(i => i.id)
+              providerEdit('selected_list_ids', e.target.checked ? [...new Set([...ids, list.id])] : ids.filter(id => id !== list.id))
+            }} />{list.name} — {list.type}, priority {list.priority}, {list.item_count} entries · {list.license}
+          </label>)}
+          {!provider.catalog.length && <p>Save settings, enable matching, then download to discover available lists.</p>}
+        </> : <p>Automatic downloads are inactive for a local source. Import a new file to update the database.</p>}
+      </fieldset>
+      {providerError && <p role="alert">{providerError}</p>}
+      <h3>Saved database status</h3>
+      {!provider.entries && <p role="alert">Zero applicable Saracroche rules are loaded. Matching cannot block calls until a database is downloaded or imported.</p>}
+      <p>{provider.entries} stored rules · Last success: {date(provider.last_success)} · Next scheduled attempt: {date(provider.next_update)}<br />Version: {provider.version || 'Not loaded'} · Failed attempts: {provider.failures}</p>
+      <p>Loaded source: {provider.source_mode || 'none'} · License: {provider.license || 'Not supplied'}</p>
+      {provider.coverage?.blocked_numbers != null && <p>{provider.coverage.block} blocking rules · {provider.coverage.allow} allow rules · {provider.coverage.blocked_numbers.toLocaleString()} distinct numbers covered (includes possibly unallocated numbers).</p>}
+      {provider.error && <p role="alert">{provider.error} — last valid database retained; review settings and retry.</p>}
+      {provider.connection.source === 'remote' ? <>
+        <button className="btn btn-primary" disabled={busy || savingProvider || providerDirty || provider.updating || !provider.enabled} onClick={() => run(async () => {
+          const result = await request('POST', '/providers/saracroche/update')
+          if (!result.ok) throw new Error(result.error)
+          showToast('Database updated')
+        })}>{busy || provider.updating ? 'Updating database…' : 'Download / update now'}</button>
+        {!provider.enabled && <p>Enable and save Saracroche matching before downloading.</p>}
+      </> : <form className="blocking-row" onSubmit={e => { e.preventDefault(); run(async () => {
         if (!database || database.size > 64 * 1024 * 1024) throw new Error('Choose a database file up to 64 MiB')
         const query = new URLSearchParams({ version: databaseVersion, license_info: databaseLicense })
-        const r = await request('POST', '/providers/saracroche/import?' + query, database)
-        showToast(`Imported ${r.entries} rules. Enable Saracroche to apply them.`)
+        const result = await request('POST', '/providers/saracroche/import?' + query, database)
+        showToast(`Imported ${result.entries} rules. Matching and enforcement are controlled separately.`)
       }) }}>
-        <input type="file" aria-label="Android database file" accept=".ndjson,.jsonl,application/x-ndjson" onChange={(e) => setDatabase(e.target.files?.[0] || null)} />
-        <input aria-label="Database version" maxLength={128} placeholder="Version (optional)" value={databaseVersion} onChange={(e) => setDatabaseVersion(e.target.value)} />
-        <input aria-label="Database license" maxLength={500} placeholder="Database license / source (if supplied)" value={databaseLicense} onChange={(e) => setDatabaseLicense(e.target.value)} />
-        <button className="btn btn-primary" disabled={busy || !database}>Import database</button>
+        <input type="file" aria-label="Android database file" accept=".ndjson,.jsonl" onChange={e => setDatabase(e.target.files?.[0] || null)} />
+        <input aria-label="Database version" placeholder="Version (optional)" value={databaseVersion} onChange={e => setDatabaseVersion(e.target.value)} />
+        <input aria-label="Database license" placeholder="License / source" value={databaseLicense} onChange={e => setDatabaseLicense(e.target.value)} />
+        <button className="btn btn-primary" disabled={busy || providerDirty || savingProvider || !database}>Import database</button>
       </form>}
-      <p>{provider.notice}</p>
-      {provider.connection.source === 'remote' && <div className="blocking-row">
-        <label className="blocking-check"><input type="checkbox" disabled={busy || !provider.can_auto_update} checked={!!provider.auto_update}
-          onChange={(e) => run(() => request('PUT', '/providers/saracroche', { auto_update: e.target.checked, interval_hours: provider.interval_hours }))} />Automatic updates</label>
-        <label>Interval (hours)<input type="number" min="1" max="720" value={provider.interval_hours}
-          onChange={(e) => setProvider({ ...provider, interval_hours: e.target.value })} /></label>
-        <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours) }))}>Save schedule</button>
-        <button className="btn btn-primary" disabled={busy || !provider.can_auto_update || !provider.enabled} onClick={() => run(async () => {
-          const r = await request('POST', '/providers/saracroche/update'); showToast(r.ok ? 'Database updated' : r.error)
-        })}>Update now</button>
-      </div>}
-      <p>Last success: {date(provider.last_success)} · Next attempt: {date(provider.next_update)}<br />Version: {provider.version || '—'} · Entries: {provider.entries} · Failed attempts: {provider.failures}</p>
-      <p>Last database source: {provider.source_mode === 'local' ? 'Local file' : provider.source_mode === 'remote' ? 'Saracroche server' : 'Not connected'} · License: {provider.license || 'Not provided'}{provider.checksum ? ` · SHA-256: ${provider.checksum}` : ''}</p>
-      {!provider.can_auto_update && <p>Local source selected: import a new file to update the database.</p>}
-      {provider.connection.source === 'remote' && <>
-        <label>Country codes (as in Android)<input aria-label="Saracroche country codes" value={provider.connection.country_codes} onChange={(e) => setProvider({ ...provider, connection: { ...provider.connection, country_codes: e.target.value.toUpperCase() } })} /></label>
-        <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), country_codes: provider.connection.country_codes }))}>Save countries</button>
-        <button className="btn btn-ghost" disabled={busy} onClick={() => run(async () => {
-          await request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), selected_list_ids: null })
-          if (provider.enabled) { const r = await request('POST', '/providers/saracroche/update'); if (!r.ok) showToast(r.error) }
-        })}>Use Android default lists</button>
-        <p>Lists are discovered when you enable Saracroche. Android defaults are selected initially. Allow/block list priorities are preserved within Saracroche.</p>
-        {provider.catalog.map((list) => <label className="blocking-check" key={list.id}>
-          <input type="checkbox" disabled={busy} checked={list.selected} onChange={(e) => run(async () => {
-            const ids = provider.catalog.filter((i) => i.id === list.id ? e.target.checked : i.selected).map((i) => i.id)
-            await request('PUT', '/providers/saracroche', { auto_update: !!provider.auto_update, interval_hours: Number(provider.interval_hours), selected_list_ids: ids })
-            if (provider.enabled) { const r = await request('POST', '/providers/saracroche/update'); if (!r.ok) showToast(r.error) }
-          })} />
-          {list.name} — {list.type}, priority {list.priority}, {list.item_count} entries · {list.version} · {list.license}
-        </label>)}
-      </>}
-      {provider.coverage?.blocked_numbers != null && <p>Blocking rules: {provider.coverage.block.toLocaleString()} · Allow rules: {provider.coverage.allow.toLocaleString()} · Distinct numbers covered by blocking: {provider.coverage.blocked_numbers.toLocaleString()} (Saracroche list priorities and overlaps accounted for; includes possibly unallocated numbers).</p>}
-      {provider.error && <p role="status">{provider.error}</p>}
-      <a href="https://saracroche.org/fr/help/database-downloadable/" target="_blank" rel="noreferrer">Official database availability</a>
-    </div>}
+      <p>Personal rule Add/Edit/Remove, local lookup and database downloads are separate explicit actions; they do not save these forms.</p>
+    </section>}
     <div className="card blocking-card">
       <h2>Personal {kind === 'block' ? 'blacklist' : 'whitelist'}</h2>
       <div className="blocking-row">
@@ -210,7 +255,7 @@ export default function CallBlocking({ instances, showToast }) {
       <div className="blocking-table"><table><thead><tr>{['Date / time', 'Calling number', 'Line', 'Source', 'Matched rule', 'Decision / reason'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
         <tbody>{(ready ? events : []).map((e) => <tr key={e.id}><td>{date(e.ts)}</td><td>{e.peer || 'Unavailable'}</td><td>{instances.find((i) => String(i.id) === e.instance)?.name || e.instance}</td><td>{e.decision.source}</td><td>{e.decision.rule || '—'}</td><td>{e.decision.action} ({e.decision.mode}) — {e.decision.reason}</td></tr>)}</tbody></table></div>
       {!events.length && <p>No events.</p>}
-      <div className="blocking-row"><button className="btn btn-ghost" disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button className="btn btn-ghost" disabled={events.length < 50} onClick={() => setOffset(offset + 50)}>Next</button><button className="btn btn-ghost" onClick={load}>Refresh</button></div>
+      <div className="blocking-row"><button className="btn btn-ghost" disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><button className="btn btn-ghost" disabled={events.length < 50} onClick={() => setOffset(offset + 50)}>Next</button><button className="btn btn-ghost" onClick={load}>Refresh operational data</button></div>
     </div>
   </div>
 }

@@ -39,6 +39,7 @@ jobs:
           cache: npm
           cache-dependency-path: webui/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run build
   control-image:
     if: github.event_name != 'pull_request'

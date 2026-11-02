@@ -150,9 +150,8 @@ def provider_status():
 
 @router.put('/providers/saracroche')
 def provider_config(body: UpdateSettings):
-    connection = body.model_dump(exclude_unset=True)
-    connection.pop('auto_update', None); connection.pop('interval_hours', None)
-    providers.configure(body.auto_update, body.interval_hours, **connection)
+    # Preserve omitted fields for existing clients that save one provider section.
+    providers.configure(**body.model_dump(exclude_unset=True))
     return provider_status()
 
 

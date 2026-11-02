@@ -99,6 +99,7 @@ def fetch():
             selected = item['id'] in selected_ids if selected_ids is not None else item.get('is_enabled_by_default') is True
             meta = {k: item.get(k) for k in ('id', 'name', 'license', 'type', 'channel', 'version', 'item_count', 'priority')}
             meta['selected'] = selected
+            meta['is_enabled_by_default'] = item.get('is_enabled_by_default') is True
             public_catalog.append(meta)
             if not selected:
                 continue
