@@ -180,9 +180,24 @@ def record(iid, peer, call_id, result, ts=None):
         return bool(cur.rowcount)
 
 
-def events(iid=None, limit=100, offset=0):
+def events(iid=None, limit=100, offset=0, decision=None, source=None, since=None, until=None):
+    clauses, args = [], []
+    if iid:
+        clauses.append('instance=?'); args.append(iid)
+    if decision == 'rejected':
+        clauses.append("json_extract(decision,'$.action')='reject'")
+    elif decision == 'would_block':
+        clauses.append("json_extract(decision,'$.action')='allow' AND json_extract(decision,'$.would_block')=1")
+    elif decision == 'allowed':
+        clauses.append("json_extract(decision,'$.action')='allow' AND coalesce(json_extract(decision,'$.would_block'),0)=0")
+    if source:
+        clauses.append("json_extract(decision,'$.source')=?"); args.append(source)
+    if since is not None:
+        clauses.append('ts>=?'); args.append(since)
+    if until is not None:
+        clauses.append('ts<=?'); args.append(until)
+    where = 'WHERE ' + ' AND '.join('(' + clause + ')' for clause in clauses) if clauses else ''
     with store._conn() as c:
-        rows = c.execute('SELECT * FROM blocking_events ' + ('WHERE instance=? ' if iid else '') +
-                         'ORDER BY ts DESC,id DESC LIMIT ? OFFSET ?',
-                         ((iid,) if iid else ()) + (limit, offset))
+        rows = c.execute('SELECT * FROM blocking_events ' + where +
+                         ' ORDER BY ts DESC,id DESC LIMIT ? OFFSET ?', (*args, limit, offset))
         return [{**dict(r), 'decision': json.loads(r['decision'])} for r in rows]

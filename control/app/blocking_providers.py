@@ -47,8 +47,9 @@ def status():
         rows = [dict(r) for r in c.execute('SELECT * FROM blocking_providers')]
     for row in rows:
         row['supported'] = PROVIDERS[row['name']].supported
-        row['status'] = 'local_ready' if saracroche.options()['source'] == 'local' and row['entries'] else 'available' if row['supported'] else 'access_required'
-        row['connection'] = saracroche.options()
+        row['updating'] = _update_lock.locked()
+        row['connection'] = {'country_codes': 'FR', 'selected_list_ids': None, 'source': 'remote', **json.loads(row['options'])}
+        row['status'] = 'local_ready' if row['connection']['source'] == 'local' and row['entries'] else 'available' if row['supported'] else 'access_required'
         row['catalog'] = json.loads(row['catalog'])
         row['coverage'] = json.loads(row['coverage'])
         row.pop('options', None)
@@ -61,14 +62,18 @@ def status():
     return rows
 
 
-def configure(auto_update, interval_hours, **connection):
+def configure(auto_update=None, interval_hours=None, **connection):
     now = int(time.time())
-    opts = {**saracroche.options(), **connection}
-    with store._conn() as c:
-        c.execute("UPDATE blocking_providers SET options=? WHERE name='saracroche'", (json.dumps(opts),))
-    with store._conn() as c:
-        c.execute('UPDATE blocking_providers SET auto_update=?,interval_hours=?,next_update=? WHERE name=?',
-                  (auto_update, interval_hours, now + interval_hours * 3600 if auto_update and status()[0]['can_auto_update'] else None, 'saracroche'))
+    # One transaction: a failed write must not leave connection and schedule split.
+    with blocking._lock, store._conn() as c:
+        row = c.execute("SELECT * FROM blocking_providers WHERE name='saracroche'").fetchone()
+        opts = {'country_codes': 'FR', 'selected_list_ids': None, 'source': 'remote',
+                **json.loads(row['options']), **connection}
+        auto_update = bool(row['auto_update']) if auto_update is None else auto_update
+        interval_hours = row['interval_hours'] if interval_hours is None else interval_hours
+        due = now + interval_hours * 3600 if auto_update and opts['source'] == 'remote' else None
+        c.execute("""UPDATE blocking_providers SET options=?,auto_update=?,interval_hours=?,next_update=?
+                     WHERE name='saracroche'""", (json.dumps(opts), auto_update, interval_hours, due))
 
 
 def update(name='saracroche'):

@@ -117,7 +117,7 @@ export default function App({ onLogout, preview }) {
         {NAV.map(([k, label, icon, always]) => {
           const disabled = noReaders && !always
           return (
-            <button className="app-nav-button" key={k} onClick={() => !disabled && setView(k)} disabled={disabled}
+            <button className="app-nav-button" aria-label={`${icon} ${label}`} key={k} onClick={() => !disabled && setView(k)} disabled={disabled}
               title={disabled ? 'No PC/SC reader detected — connect a card reader to enable' : undefined}
               style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
                 background: view === k ? 'var(--active)' : 'transparent', color: view === k ? '#fff' : 'var(--text-dim)',

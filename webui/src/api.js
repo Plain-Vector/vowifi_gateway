@@ -15,7 +15,8 @@ async function j(method, path, body) {
   if (r.status === 401 && data.detail === 'Administrator login required') window.dispatchEvent(new Event('vowifi-unauthorized'))
   // detail may be a structured dict (e.g. {code, message}); prefer its message so
   // alerts show readable text instead of "[object Object]".
-  const detailMsg = data.detail && typeof data.detail === 'object' ? data.detail.message : data.detail
+  const detailMsg = Array.isArray(data.detail) ? data.detail.map(e => `${(e.loc || []).filter(p => p !== 'body').join('.')}: ${e.msg}`).join('; ')
+    : data.detail && typeof data.detail === 'object' ? data.detail.message : data.detail
   if (!r.ok) throw Object.assign(new Error((Array.isArray(detailMsg) ? detailMsg.map((e) => e.msg).join('; ') : detailMsg) || data.error || r.statusText), { status: r.status, data })
   return data
 }

@@ -149,6 +149,24 @@ individual enable/disable, descriptions, exact/prefix selection, local test look
 and paginated event history. Existing theme tokens support light/dark mode and
 responsive layout. The softphone's Recent calls adds Block this number for its line.
 
+Settings use local drafts with explicit **Save changes** / **Discard changes** controls.
+Global and per-line settings are one form; the shared Saracroche database connection
+and schedule are a separate, clearly labeled form. No settings checkbox sends a write.
+Saving a scope sends its complete configuration (or override set), then reads back the
+authoritative values. Line inheritance can be restored per field or reset in the draft
+with confirmation. Global Disabled still masks line Enforce without deleting it.
+
+The 15-second operational poll refreshes rules, history and provider status only. It
+never replaces editable settings or provider drafts. Generation guards invalidate old
+reads when changing scope/unmounting; settings saves disable editing/scope changes and
+retain the draft on failure. Unsaved scope changes and browser closure are confirmed.
+Database downloads/imports and personal rule actions remain separate explicit actions.
+Provider PUT preserves omitted fields for older section-specific clients and commits
+connection/schedule changes together. No database migration is required.
+
+See [settings fix and native deployment](BLOCKING_SETTINGS_FIX.md) for root causes,
+validation and a Control-only update without rebuilding Engine.
+
 ## Saracroche investigation (2026-11-02)
 
 Sources:
@@ -365,3 +383,17 @@ Personal whitelist/blacklist, independent ARCEP settings, disabled scopes and Mo
 mode can change the actual outcome for a call. For the FR snapshot checked 2026-11-02:
 2,413 block rules + 130,197 allow rules = 132,610 stored rules; effective Saracroche
 block coverage is 15,463,210 distinct numbers before personal/global policy overrides.
+
+### Compact WebUI and filtered history
+
+Five linked sections separate filtering, Saracroche, personal lists, number testing
+and history. Detailed help and database configuration are collapsed initially; saved
+effective status remains distinct from draft values. Personal lists use keyboard tabs;
+lookup verdicts are simulations, not proof of carrier call rejection.
+
+`GET /api/blocking/events` accepts optional `instance`, `decision` (`allowed`,
+`rejected`, `would_block`), `source`, `since` and `until` Unix timestamps alongside
+existing `limit`/`offset`. Filters apply before pagination. `allowed` excludes matching
+calls that were allowed in Monitor; `would_block` includes only allow decisions with
+`would_block=true`. The response retains `events` and adds `has_more`. No stored schema
+or engine/filter behavior changes are involved.
