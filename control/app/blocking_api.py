@@ -137,10 +137,15 @@ def lookup(body: Lookup):
 
 @router.get('/events')
 def events(instance: str | None = None, limit: int = Query(100, ge=1, le=500),
-           offset: int = Query(0, ge=0)):
+           offset: int = Query(0, ge=0), decision: Literal['allowed', 'rejected', 'would_block'] | None = None,
+           source: Literal['none', 'whitelist', 'blacklist', 'arcep', 'saracroche', 'withheld', 'unavailable', 'error'] | None = None,
+           since: int | None = Query(None, ge=0), until: int | None = Query(None, ge=0)):
     if instance:
         scope_check(instance)
-    return {'events': blocking.events(instance, limit, offset)}
+    if since is not None and until is not None and since > until:
+        raise HTTPException(422, 'Start time must be before end time')
+    rows = blocking.events(instance, limit + 1, offset, decision, source, since, until)
+    return {'events': rows[:limit], 'has_more': len(rows) > limit}
 
 
 @router.get('/providers')

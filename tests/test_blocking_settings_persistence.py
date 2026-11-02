@@ -93,3 +93,47 @@ def test_unauthenticated_and_invalid_write_do_not_change_saved_values(client):
     assert client.put('/api/blocking/settings', json={'mode': 'invalid'}).status_code == 422
     assert client.put('/api/blocking/settings?scope=missing', json={}).status_code == 404
     assert settings(client) == original
+
+
+def seed_decisions():
+    for index, (iid, action, would_block, source) in enumerate([
+        ('1', 'allow', False, 'none'), ('1', 'allow', True, 'saracroche'),
+        ('1', 'reject', True, 'blacklist'), ('2', 'reject', True, 'arcep'),
+        ('2', 'allow', False, 'whitelist'), ('1', 'allow', True, 'saracroche'),
+    ]):
+        blocking.record(iid, '+33612345678', f'ui-test-{index}', {
+            'action': action, 'would_block': would_block, 'source': source,
+            'mode': 'monitor' if action == 'allow' and would_block else 'enforce',
+            'reason': 'Synthetic decision', 'rule': 'test', 'normalized': '+33612345678',
+        }, ts=1000 + index)
+
+
+def test_history_filters_are_applied_before_pagination(client):
+    seed_decisions()
+    path = '/api/blocking/events'
+    first = client.get(path, params={'decision': 'would_block', 'source': 'saracroche', 'instance': '1', 'limit': 1}).json()
+    assert first['has_more'] and len(first['events']) == 1
+    assert first['events'][0]['ts'] == 1005
+    second = client.get(path, params={'decision': 'would_block', 'source': 'saracroche', 'instance': '1', 'limit': 1, 'offset': 1}).json()
+    assert not second['has_more'] and second['events'][0]['ts'] == 1001
+    assert len(client.get(path).json()['events']) == 6  # old endpoint contract remains valid
+
+
+def test_history_distinguishes_rejected_allowed_and_monitor(client):
+    seed_decisions()
+    for category in ('allowed', 'rejected', 'would_block'):
+        rows = client.get('/api/blocking/events', params={'decision': category}).json()['events']
+        assert len(rows) == 2
+        if category == 'rejected':
+            assert all(r['decision']['action'] == 'reject' for r in rows)
+        else:
+            assert all(r['decision']['action'] == 'allow' for r in rows)
+            assert all(bool(r['decision']['would_block']) == (category == 'would_block') for r in rows)
+
+
+def test_history_time_window_and_parameter_validation(client):
+    seed_decisions()
+    rows = client.get('/api/blocking/events', params={'since': 1001, 'until': 1003}).json()['events']
+    assert [row['ts'] for row in rows] == [1003, 1002, 1001]
+    for params in ({'since': 2, 'until': 1}, {'source': 'injected'}, {'decision': 'invalid'}, {'since': -1}, {'instance': 'missing'}):
+        assert client.get('/api/blocking/events', params=params).status_code in (422, 404)

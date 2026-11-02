@@ -383,3 +383,17 @@ Personal whitelist/blacklist, independent ARCEP settings, disabled scopes and Mo
 mode can change the actual outcome for a call. For the FR snapshot checked 2026-11-02:
 2,413 block rules + 130,197 allow rules = 132,610 stored rules; effective Saracroche
 block coverage is 15,463,210 distinct numbers before personal/global policy overrides.
+
+### Compact WebUI and filtered history
+
+Five linked sections separate filtering, Saracroche, personal lists, number testing
+and history. Detailed help and database configuration are collapsed initially; saved
+effective status remains distinct from draft values. Personal lists use keyboard tabs;
+lookup verdicts are simulations, not proof of carrier call rejection.
+
+`GET /api/blocking/events` accepts optional `instance`, `decision` (`allowed`,
+`rejected`, `would_block`), `source`, `since` and `until` Unix timestamps alongside
+existing `limit`/`offset`. Filters apply before pagination. `allowed` excludes matching
+calls that were allowed in Monitor; `would_block` includes only allow decisions with
+`would_block=true`. The response retains `events` and adds `has_more`. No stored schema
+or engine/filter behavior changes are involved.

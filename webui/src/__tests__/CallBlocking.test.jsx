@@ -6,7 +6,7 @@ import { api } from '../api.js'
 vi.mock('../api.js', () => ({ api: { blocking: vi.fn() } }))
 
 const defaults = { mode: 'monitor', arcep: false, saracroche: false, block_withheld: false, block_unavailable: false }
-let configs, provider, poll, failSave, pendingRead
+let configs, provider, poll, failSave, pendingRead, personalRules, historyEvents, lookupResult, updateResult
 const instances = [{ id: '1', name: 'SIM one' }, { id: '2', name: 'SIM two' }]
 const filterForm = () => within(screen.getByRole('region', { name: 'Filtering settings' }))
 const databaseForm = () => within(screen.getByRole('region', { name: 'Saracroche database settings' }))
@@ -15,6 +15,7 @@ const mount = async () => { render(<CallBlocking instances={instances} showToast
 const save = async () => { fireEvent.click(filterForm().getByText('Save changes')); await waitFor(() => expect(filterForm().getByText('Saved')).toBeTruthy()) }
 const switchScope = async (scope) => { fireEvent.change(scopeSelect(), { target: { value: scope } }); await waitFor(() => expect(filterForm().getByRole('heading').textContent).toBe(scope === '*' ? 'Global filtering settings' : 'Line filtering settings')) }
 beforeEach(() => {
+  personalRules = []; historyEvents = []; lookupResult = { action: 'allow', would_block: false, source: 'none', mode: 'monitor', reason: 'No match' }; updateResult = { ok: true }
   configs = { '*': { ...defaults }, '1': {}, '2': {} }; failSave = false; pendingRead = null
   provider = { connection: { source: 'remote', country_codes: 'FR', selected_list_ids: null }, auto_update: false, interval_hours: 24, entries: 0, catalog: [], coverage: {}, enabled: false }
   vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -37,8 +38,19 @@ beforeEach(() => {
       provider = { ...provider, auto_update: body.auto_update, interval_hours: body.interval_hours, connection: { source: body.source, country_codes: body.country_codes, selected_list_ids: body.selected_list_ids } }
     }
     if (url.pathname === '/providers' || url.pathname === '/providers/saracroche') return { providers: [structuredClone(provider)] }
-    if (url.pathname === '/rules') return { rules: [] }
-    if (url.pathname === '/events') return { events: [] }
+    if (url.pathname === '/providers/saracroche/update') return updateResult
+    if (url.pathname === '/lookup') return lookupResult
+    if (url.pathname.startsWith('/rules')) {
+      if (method === 'POST' || method === 'PUT') {
+        if (body.number === 'invalid') throw Object.assign(new Error('Use a valid international number'), { status: 422 })
+        const id = method === 'POST' ? personalRules.length + 1 : Number(url.pathname.split('/').at(-1))
+        personalRules = personalRules.filter(rule => rule.id !== id).concat({ ...body, id })
+        return { id }
+      }
+      if (method === 'DELETE') { personalRules = personalRules.filter(rule => rule.id !== Number(url.pathname.split('/').at(-1))); return { ok: true } }
+      return { rules: personalRules.filter(rule => rule.scope === scope && rule.kind === url.searchParams.get('kind')) }
+    }
+    if (url.pathname === '/events') return { events: structuredClone(historyEvents), has_more: false }
     throw new Error('Unexpected request ' + method + ' ' + path)
   })
 })
@@ -167,4 +179,92 @@ describe('explicit settings lifecycle', () => {
     await waitFor(() => expect(databaseForm().getByText('Saved')).toBeTruthy())
     expect(provider.connection.source).toBe('local')
   })
+  it('shows saved effective status independently from an unsaved mode draft', async () => {
+    await mount()
+    fireEvent.change(screen.getByLabelText('Operation mode'), { target: { value: 'enforce' } })
+    expect(within(screen.getByLabelText('Saved filtering status')).getByText('Monitor')).toBeTruthy()
+    await save()
+    expect(within(screen.getByLabelText('Saved filtering status')).getByText('Enforce')).toBeTruthy()
+    await switchScope('1')
+    configs['*'].mode = 'disabled'
+    await switchScope('*'); await switchScope('1')
+    expect(within(screen.getByLabelText('Saved filtering status')).getByText('Disabled')).toBeTruthy()
+  })
+  it('adds, edits and deletes personal rules in separate blacklist/whitelist tabs', async () => {
+    await mount()
+    const section = within(screen.getByRole('region', { name: 'Personal lists' }))
+    fireEvent.change(screen.getByLabelText('Number or prefix'), { target: { value: '+33612345678' } })
+    fireEvent.click(section.getByRole('button', { name: 'Add', exact: true }))
+    await section.findByRole('button', { name: 'Edit' })
+    fireEvent.click(section.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Known test rule' } })
+    fireEvent.click(section.getByRole('button', { name: 'Save', exact: true }))
+    await section.findByText('Exact · Known test rule')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Blacklist' }), { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Whitelist' }))
+    await waitFor(() => expect(section.queryByRole('button', { name: 'Edit' })).toBeNull())
+    fireEvent.change(screen.getByLabelText('Number or prefix'), { target: { value: '+33600000000' } })
+    fireEvent.click(section.getByRole('button', { name: 'Add', exact: true }))
+    await section.findByRole('button', { name: 'Edit' })
+    expect(personalRules.find(rule => rule.number === '+33600000000').kind).toBe('allow')
+    fireEvent.click(section.getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(section.queryByRole('button', { name: 'Edit' })).toBeNull())
+    expect(personalRules).toHaveLength(1)
+  })
+  it('places rule validation errors next to the number and preserves the input', async () => {
+    await mount()
+    fireEvent.change(screen.getByLabelText('Number or prefix'), { target: { value: 'invalid' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }))
+    await screen.findByText('Use a valid international number')
+    expect(screen.getByLabelText('Number or prefix').getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByLabelText('Number or prefix').value).toBe('invalid')
+  })
+  it('shows update busy/error states and does not lose errors during polling', async () => {
+    provider.enabled = true
+    let release; updateResult = new Promise(resolve => { release = resolve })
+    await mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Update database now' }))
+    expect(screen.getByRole('button', { name: 'Updating database…' }).disabled).toBe(true)
+    await act(async () => { release({ ok: false, error: 'Synthetic provider failure' }) })
+    await screen.findByText('Synthetic provider failure')
+    await act(async () => { await poll() })
+    expect(screen.getByText('Synthetic provider failure')).toBeTruthy()
+  })
+  it('refreshes the latest SIM when a database update finishes after switching scope', async () => {
+    provider.enabled = true
+    let release; updateResult = new Promise(resolve => { release = resolve })
+    await mount(); fireEvent.click(screen.getByRole('button', { name: 'Update database now' }))
+    await switchScope('2')
+    await act(async () => { release({ ok: true }) })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update database now' }).disabled).toBe(false))
+    const reads = api.blocking.mock.calls.filter(([method, path]) => method === 'GET' && path.startsWith('/rules?'))
+    expect(new URL(reads.at(-1)[1], 'https://test').searchParams.get('scope')).toBe('2')
+  })
+  it.each([
+    ['allow', false, 'none', 'Allowed'],
+    ['allow', true, 'saracroche', 'Would be blocked in Enforce'],
+    ['reject', true, 'blacklist', 'Blocked by current settings'],
+  ])('presents simulated %s / %s decisions without generating calls', async (action, would_block, source, label) => {
+    lookupResult = { action, would_block, source, mode: action === 'reject' ? 'enforce' : 'monitor', rule: '+33612', reason: 'Synthetic test' }
+    await mount(); fireEvent.click(screen.getByRole('button', { name: 'Test number', exact: true }))
+    await within(screen.getByRole('region', { name: 'Number test' })).findByText(label)
+    expect(screen.getByText(/does not verify carrier call rejection/)).toBeTruthy()
+    expect(api.blocking.mock.calls.filter(([method]) => method === 'POST').map(([, path]) => path)).toEqual(['/lookup'])
+  })
+  it('shows distinct history outcomes and sends all filters to the paginated API', async () => {
+    historyEvents = [
+      { id: 1, ts: 1000, peer: '+33611111111', instance: '1', decision: { action: 'reject', would_block: true, mode: 'enforce', source: 'blacklist', reason: 'Matched' } },
+      { id: 2, ts: 1001, peer: '+33622222222', instance: '2', decision: { action: 'allow', would_block: true, mode: 'monitor', source: 'saracroche', reason: 'Matched' } },
+    ]
+    await mount()
+    const history = within(screen.getByRole('region', { name: 'Call history' }))
+    expect(history.getByText('Rejected', { selector: 'span' })).toBeTruthy(); expect(history.getByText('Would be blocked in Enforce')).toBeTruthy()
+    fireEvent.change(history.getByLabelText('SIM'), { target: { value: '2' } })
+    fireEvent.change(history.getByLabelText('Decision'), { target: { value: 'would_block' } })
+    fireEvent.change(history.getByLabelText('Rule source'), { target: { value: 'saracroche' } })
+    fireEvent.change(history.getByLabelText('Time period'), { target: { value: '24' } })
+    await waitFor(() => expect(api.blocking.mock.calls.some(([method, path]) => method === 'GET' && path.includes('instance=2') && path.includes('decision=would_block') && path.includes('source=saracroche') && path.includes('since='))).toBe(true))
+    expect(history.getByRole('button', { name: 'Next' }).disabled).toBe(true)
+  })
+
 })
