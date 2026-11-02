@@ -33,7 +33,6 @@ beforeEach(async () => {
       if (method === 'PUT') { if (failSave) throw new Error('Write failed: disk full'); configs[scope] = { ...body } }
       if (method === 'GET' && pendingRead) return pendingRead(scope)
       const effective = { ...configs['*'], ...configs[scope] }
-      if (configs['*'].mode === 'disabled') effective.mode = 'disabled'
       return structuredClone({ scope, global: configs['*'], override: scope === '*' ? {} : configs[scope], effective })
     }
     if (url.pathname === '/providers/saracroche' && method === 'PUT') {
@@ -61,6 +60,36 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 describe('explicit settings lifecycle', () => {
+  it('keeps explicit line call and SMS modes active over Disabled defaults and displays saved values', async () => {
+    configs['*'] = { ...defaults, mode:'disabled', sms_mode:'disabled' }
+    configs['1'] = { mode:'enforce', sms_mode:'monitor' }
+    await mount(); await switchScope('1')
+    expect(screen.getByLabelText('Operation mode').value).toBe('enforce')
+    expect(screen.getByLabelText('SMS filtering mode').value).toBe('monitor')
+    const status=within(screen.getByLabelText('Saved filtering status'))
+    expect(status.getByText('Enforce')).toBeTruthy()
+    expect(status.getByText('SMS mode: Monitor')).toBeTruthy()
+    expect(screen.queryByText(/overrides this line's mode/)).toBeNull()
+    await switchScope('2')
+    expect(screen.getByLabelText('Operation mode').value).toBe('disabled')
+    expect(screen.getByLabelText('SMS filtering mode').value).toBe('disabled')
+    await switchScope('1')
+    fireEvent.change(screen.getByLabelText('SMS filtering mode'),{target:{value:'enforce'}}); await save()
+    expect(configs['1']).toEqual({mode:'enforce',sms_mode:'enforce'})
+    expect(configs['2']).toEqual({})
+    await switchScope('2')
+    expect(screen.getByLabelText('SMS filtering mode').value).toBe('disabled')
+  })
+  it('shows explicit line Disabled over global Enforce, separately for each mode', async () => {
+    configs['*'] = { ...defaults, mode:'enforce', sms_mode:'enforce' }
+    configs['1'] = { mode:'disabled' }
+    await mount(); await switchScope('1')
+    expect(screen.getByLabelText('Operation mode').value).toBe('disabled')
+    expect(screen.getByLabelText('SMS filtering mode').value).toBe('enforce')
+    fireEvent.click(screen.getByText('Inherit mode')); await save()
+    expect(screen.getByLabelText('Operation mode').value).toBe('enforce')
+  })
+
   it('saves SMS mode independently and inherits it on another SIM', async () => {
     await mount()
     fireEvent.change(screen.getByLabelText('SMS filtering mode'), { target:{value:'monitor'} })

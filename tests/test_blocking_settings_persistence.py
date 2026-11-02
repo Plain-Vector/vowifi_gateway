@@ -76,15 +76,15 @@ def test_provider_partial_writes_validation_and_restart(client, db):
 
 
 @pytest.mark.parametrize('mode,action', [('disabled', 'allow'), ('monitor', 'allow'), ('enforce', 'reject')])
-def test_modes_and_global_emergency_stop(client, mode, action):
+def test_modes_and_explicit_line_override(client, mode, action):
     assert client.put('/api/blocking/settings', json={'mode': mode, 'block_withheld': True}).status_code == 200
     assert settings(client)['effective']['mode'] == mode
     assert blocking.lookup('1', '', 'prohib')['action'] == action
     if mode == 'disabled':
         client.put('/api/blocking/settings?scope=1', json={'mode': 'enforce'})
         assert settings(client, '1')['override']['mode'] == 'enforce'
-        assert settings(client, '1')['effective']['mode'] == 'disabled'
-        assert blocking.lookup('1', '', 'prohib')['action'] == 'allow'
+        assert settings(client, '1')['effective']['mode'] == 'enforce'
+        assert blocking.lookup('1', '', 'prohib')['action'] == 'reject'
 
 
 def test_unauthenticated_and_invalid_write_do_not_change_saved_values(client):

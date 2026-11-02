@@ -29,13 +29,9 @@ def options():
 
 def enabled():
     from . import blocking
-    global_settings = blocking.settings()['effective']
-    if global_settings['mode'] == 'disabled':
-        return False
-    return global_settings['saracroche'] or any(
-        blocking.settings(str(i['id']))['effective']['saracroche']
-        and blocking.settings(str(i['id']))['effective']['mode'] != 'disabled'
-        for i in blocking.cfg.list_instances())
+    scopes = ['*', *(str(i['id']) for i in blocking.cfg.list_instances())]
+    return any(settings['saracroche'] and settings['mode'] != 'disabled'
+               for settings in (blocking.settings(scope)['effective'] for scope in scopes))
 
 
 def read_response(session, url, headers, limit, deadline):
