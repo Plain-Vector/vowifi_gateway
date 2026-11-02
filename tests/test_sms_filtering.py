@@ -162,7 +162,13 @@ def test_migrate_v4_database_preserves_data_and_is_idempotent(client, db):
         c.execute('ALTER TABLE blocking_rules DROP COLUMN communication')
         c.execute('DELETE FROM blocking_migrations WHERE version=5')
         c.execute('DROP TABLE blocking_sms_events'); c.execute('DROP TABLE sms_delivery_receipts')
+    with store._conn() as c:
+        c.execute("UPDATE blocking_providers SET version='preserved-provider',entries=123,options=?", ('{"source":"local"}',))
+        c.execute("INSERT INTO blocking_imports(provider,number,match_type) VALUES('saracroche','+33600000000','exact')")
     b.init(); b.init()
+    with store._conn() as c:
+        assert c.execute('SELECT version FROM blocking_providers').fetchone()[0]=='preserved-provider'
+        assert c.execute('SELECT count(*) FROM blocking_imports').fetchone()[0]==1
     assert b.rules()[0]['id']==rid and b.rules()[0]['communication']=='calls'
     assert b.settings()['global']['sms_mode']=='disabled'
     assert store.list_messages('1','666')[0]['body']=='preserve'
@@ -233,3 +239,54 @@ def test_quick_block_does_not_reenable_unrelated_disabled_channels(client):
     response=client.post('/api/blocking/quick-rule',json={'number':'666','communication':'sms'})
     assert response.status_code==409
     assert b.rules()[0]['communication']=='both' and not b.rules()[0]['enabled']
+
+
+@pytest.mark.parametrize('number', ['666','1023','+33612345678'])
+def test_outgoing_sms_unaffected_by_enforce(client, monkeypatch, number):
+    b.save_settings('*',{'mode':'enforce','sms_mode':'enforce'})
+    b.save_rule(rule(number,'both'))
+    ami=type('SyntheticAMI',(),{'send_sms':AsyncMock(return_value={'ok':True})})()
+    monkeypatch.setattr(hub,'ami_for',AsyncMock(return_value=ami))
+    monkeypatch.setattr(hub,'broadcast',AsyncMock())
+    watch=AsyncMock(); monkeypatch.setattr('app.main._watch_sms_delivery',watch)
+    monkeypatch.setattr(b,'lookup',lambda *a,**kw:pytest.fail('Outgoing SMS consulted incoming policy'))
+    response=client.post('/api/instances/1/sms/send',json={'to':number,'body':'synthetic outgoing'})
+    assert response.status_code==200 and response.json()['pending_delivery']
+    ami.send_sms.assert_awaited_once_with(number,'synthetic outgoing')
+    assert store.list_messages('1',number)[0]['direction']=='out'
+    assert b.sms_events()==[]
+
+
+def test_normal_sms_write_failure_rolls_back_receipt(db, monkeypatch):
+    real_connect=sqlite3.connect
+    class Failing(sqlite3.Connection):
+        def execute(self,sql,*args,**kwargs):
+            if sql.startswith('INSERT INTO messages'):
+                raise sqlite3.OperationalError('synthetic write failure')
+            return super().execute(sql,*args,**kwargs)
+    monkeypatch.setattr(sqlite3,'connect',lambda *a,**kw:real_connect(*a,**kw,factory=Failing))
+    with pytest.raises(sqlite3.OperationalError): b.deliver_sms('1','666','kept',report('monitor','allow'))
+    with store._conn() as c:
+        assert c.execute('SELECT count(*) FROM sms_delivery_receipts').fetchone()[0]==0
+
+
+def test_new_snapshots_isolate_sms_from_legacy_call_matchers(db):
+    b.save_settings('*',{'mode':'enforce','sms_mode':'enforce'})
+    b.save_rule(rule('666','sms'))
+    with closing(sqlite3.connect(b.snapshot_path('1'))) as c:
+        assert c.execute('SELECT count(*) FROM rules').fetchone()[0]==0
+        assert c.execute('SELECT number FROM sms_rules').fetchone()[0]=='666'
+    with closing(sqlite3.connect(':memory:')) as c:
+        c.executescript("CREATE TABLE settings(key TEXT,value TEXT); INSERT INTO settings VALUES('mode','enforce'),('sms_mode','enforce'); CREATE TABLE rules(kind TEXT,number TEXT,match_type TEXT,priority INTEGER); INSERT INTO rules VALUES('block','666','exact',0)")
+        from app.blocking_match import decision
+        assert decision(c,'666')['action']=='reject'
+        assert decision(c,'666',communication='sms')['action']=='allow'
+
+
+def test_sms_history_filters_and_paginates(client):
+    for iid,event_id,action in [('1','one','allow'),('1','two','reject'),('2','three','reject')]:
+        b.record_sms(iid,report('enforce',action,event_id))
+    first=client.get('/api/blocking/sms-events?decision=suppressed&limit=1').json()
+    assert first['has_more'] and len(first['events'])==1
+    assert len(client.get('/api/blocking/sms-events?instance=1&decision=suppressed').json()['events'])==1
+    assert len(client.get('/api/blocking/sms-events?decision=suppressed&limit=1&offset=1').json()['events'])==1

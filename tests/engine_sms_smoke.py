@@ -105,6 +105,8 @@ contact=sip:desk@127.0.0.1:5099
                                 c.executemany('INSERT INTO settings VALUES(?,?)',[('mode','enforce'),('sms_mode',mode)])
                                 c.execute("INSERT INTO sms_rules VALUES('block','666','exact',0)")
                         count=len(journal.read_text().splitlines()) if journal.exists() else 0
+                        body_log=Path('/logs/messages.txt')
+                        body_log_size=body_log.stat().st_size if body_log.exists() else 0
                         with socket.create_connection(('127.0.0.1',5088),timeout=3) as transport:
                             transport.settimeout(3)
                             port=transport.getsockname()[1]; identity=uuid.uuid4().hex
@@ -157,6 +159,7 @@ contact=sip:desk@127.0.0.1:5099
                                 except socket.timeout: with_timeout=True
                                 assert with_timeout,'Suppressed SMS forwarded to SIP client'
                                 assert 'hello' not in json.dumps(event)
+                                assert (body_log.stat().st_size if body_log.exists() else 0)==body_log_size, 'Suppressed SMS body logged'
                             else:
                                 assert event['event']=='sms_in',event
                                 forwarded,address=sink.recvfrom(65536)

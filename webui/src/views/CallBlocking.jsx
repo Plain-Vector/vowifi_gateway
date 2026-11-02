@@ -153,6 +153,7 @@ export default function CallBlocking({ instances, showToast }) {
       <div className="blocking-summary" aria-label={tx("blocking.savedFilteringStatus")}>
         <strong>{scopeName}</strong>
         <span className={'blocking-badge ' + (live?.mode || 'disabled')}>{tx(modes[live?.mode]) || tx("blocking.loading")}</span>
+        <span>{tx('sms.mode')}: {tx(modes[live?.sms_mode || 'disabled'])}</span>
         <span>{tx("blocking.saracroche", {value1: live?.saracroche ? tx("blocking.on") : tx("blocking.off")})}</span>
         <span>{tx("blocking.database", {value1: provider?.entries ? tx("blocking.loaded") : tx("blocking.notLoaded")})}</span>
         {(settingsForm.dirty || providerDirty) && <span className="blocking-badge monitor">{tx("blocking.unsavedChanges")}</span>}

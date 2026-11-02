@@ -72,6 +72,7 @@ def init():
         c.execute("""CREATE TABLE IF NOT EXISTS sms_delivery_receipts(
           instance TEXT NOT NULL,event_id TEXT NOT NULL,ts INTEGER NOT NULL,
           PRIMARY KEY(instance,event_id))""")
+        c.execute('CREATE INDEX IF NOT EXISTS sms_delivery_receipts_ts ON sms_delivery_receipts(ts)')
         c.execute('INSERT OR IGNORE INTO blocking_migrations VALUES(5)')
     publish_all()
 
