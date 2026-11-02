@@ -1,17 +1,19 @@
-# Local validation — 2026-11-02
+# Validation — 2026-11-02
 
-Changes were validated locally, without deployment or GitHub publication.
+Changes were validated locally and in GitHub Actions. No production deployment was performed.
 
 | Check | Result |
 | --- | --- |
-| Backend pytest suite | 84 passed (Python 3.14); includes actual FastAPI app callbacks |
+| Backend pytest suite | 88 passed (Python 3.14); includes actual FastAPI app callbacks |
 | Python compileall (control/app and engine) | Passed |
 | Shell syntax (install.sh, engine/entrypoint.sh) | Passed |
 | npm ci and production Vite build | Passed (Node 22) |
 | Browser smoke (headless Chromium) | Passed: CRUD, normalization, Monitor/Enforce lookup, 390 px mobile layout, no page errors |
 | git diff --check | Passed |
-| Docker image build / actual Asterisk / IMS calls | Not run: Docker socket access denied; no carrier/SIM test environment |
-| GitHub Actions | Workflow prepared; not run remotely because branch has not been pushed |
+| Docker images / Asterisk | GitHub Actions builds control and engine from source on amd64 and arm64; verifies Asterisk and engine imports |
+| Fresh-server installation | CI runs the installer, checks HTTPS first-run setup and host/container PCSC context on both architectures |
+| Actual IMS calls | Not run: no carrier/SIM test environment |
+| GitHub Actions | See the commit-specific workflow result; image and installation jobs run on branch pushes |
 
 Browser smoke used an isolated temporary SQLite database and two synthetic instances,
 without connecting a SIM, starting an engine or accessing production data.
@@ -55,3 +57,8 @@ The owner's preview at https://127.0.0.1:8843 remains a separate local runtime.
 Coverage statistics are computed without expanding masks; priority/overlap tests pass.
 The verified FR snapshot covers 15,463,210 distinct numbers under provider priorities,
 with 2,413 block and 130,197 allow rules. Counts include potentially unallocated numbers.
+
+Installation dependencies are installed automatically: Docker and download tools on the
+host, host PCSC build dependencies/system units, Python dependencies and the Node build
+toolchain in the image. The Debian control image pins the PCSC library directory to
+`/usr/lib` so its runtime loader finds the library on amd64 and arm64.
