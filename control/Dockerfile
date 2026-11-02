@@ -23,6 +23,7 @@ FROM python:3.12-slim
 # pcsc-lite client library, built from source and pinned to the SAME version as the host pcscd
 # and the engine image (PCSC_VERSION). pyscard loads libpcsclite.so.1 at runtime to detect the
 # reader via the mounted host /run/pcscd socket — matching versions avoids protocol mismatch.
+# Pin libdir: Meson may select /usr/lib64 on amd64, outside Debian loader search paths.
 ARG PCSC_VERSION=2.3.3
 RUN apt-get update && apt-get install -y --no-install-recommends \
         swig gcc python3-dev pkg-config \
@@ -30,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && cd /tmp \
     && wget -qO pcsc.tar.gz "https://github.com/LudovicRousseau/PCSC/archive/refs/tags/${PCSC_VERSION}.tar.gz" \
     && tar xf pcsc.tar.gz && cd "PCSC-${PCSC_VERSION}" \
-    && meson setup builddir --prefix=/usr -Dpolkit=false -Dlibsystemd=false -Dlibudev=false \
+    && meson setup builddir --prefix=/usr --libdir=lib -Dpolkit=false -Dlibsystemd=false -Dlibudev=false \
     && ninja -C builddir && ninja -C builddir install && ldconfig \
     && rm -rf /tmp/pcsc.tar.gz "/tmp/PCSC-${PCSC_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
