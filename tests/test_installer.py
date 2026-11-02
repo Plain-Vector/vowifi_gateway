@@ -40,3 +40,29 @@ def test_terminal_setup_can_be_skipped_without_opening_admin(db, monkeypatch):
     with patch('builtins.input',return_value='n'):
         admin.main()
     assert not auth.configured() and (db/'auth/setup-code').exists()
+
+
+def test_bootstrap_installs_missing_downloader_before_docker(tmp_path):
+    script = (ROOT/'install.sh').read_text()
+    function = script[script.index('ensure_docker() {'):script.index('\nensure_pcscd() {')]
+    harness = r'''
+set -eu
+info() { :; }
+die() { echo "$*" >&2; exit 1; }
+have() {
+  case "$1" in
+    docker) test -f "$TEST_STATE/docker" ;;
+    curl) test -f "$TEST_STATE/curl" ;;
+    wget) return 1 ;;
+    *) command -v "$1" >/dev/null 2>&1 ;;
+  esac
+}
+pkg_install() { printf '%s\n' "$*" > "$TEST_STATE/packages"; touch "$TEST_STATE/curl"; }
+curl() { printf 'touch "$TEST_STATE/docker"\n'; }
+docker() { test -f "$TEST_STATE/docker"; }
+svc_enable_start() { :; }
+'''
+    subprocess.run(['sh','-c',harness+function+'\nensure_docker\n'],
+                   env={**os.environ,'TEST_STATE':str(tmp_path)},check=True)
+    assert (tmp_path/'packages').read_text().strip() == 'curl ca-certificates'
+    assert (tmp_path/'docker').exists()

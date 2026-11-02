@@ -219,6 +219,10 @@ control_running() {
 
 # ------------------------------------------------------------------ prerequisites
 ensure_docker() {
+  if ! have curl && ! have wget; then
+    info "installing HTTPS download/startup-check prerequisites…"
+    pkg_install curl ca-certificates
+  fi
   if have docker && docker info >/dev/null 2>&1; then
     info "Docker present ($(docker --version | awk '{print $3}' | tr -d ,))"
     return
