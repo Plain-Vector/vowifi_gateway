@@ -45,6 +45,8 @@ an independently documented stable public API; errors preserve the last valid da
 Read [architecture, source investigation, configuration, tests and rollback](docs/CALL_BLOCKING.md)
 before rollout. Preserve local IMS patches and start with a non-production line.
 See [GitHub fork workflow](docs/GITHUB_WORKFLOW.md) for contribution and authentication.
+For an existing server, follow the [production test rollout](docs/PRODUCTION_TESTING.md),
+including preservation of private IMS patches and rebuilding the engine image.
 
 ---
 
