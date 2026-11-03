@@ -76,7 +76,7 @@ space, including possibly unallocated numbers.
 Test a personal blacklist entry in Monitor, inspect its event, then choose **Enforce**
 for the test line and place a controlled incoming call. Confirm rejection before client
 ringing. Test whitelist override and your chosen withheld/unavailable-ID policy. Keep
-other lines in Monitor while testing. Global Disabled overrides all line modes.
+other lines in Monitor while testing. Global settings are defaults; explicit per-SIM values always take precedence.
 
 For ntfy, enter server/topic and optional token under Settings, save, and send a synthetic
 test. Then test one real incoming SMS. Use a private access-controlled topic; text is
@@ -85,7 +85,8 @@ by the developer; automated/browser delivery tests used a local receiver.
 
 ## Rollback
 
-Global **Disabled** immediately stops filtering without restarting an engine. For code
+To stop filtering without an Engine restart, set global call/SMS defaults to **Disabled**
+and also disable or clear every explicit per-SIM mode override. For code
 rollback, stop the test lines, restore the backed-up source/images and restart in a
 maintenance window. Preserve private patches and runtime data. Additive blocking/auth
 tables can remain; an older manager ignores them, but its lack of login must be covered

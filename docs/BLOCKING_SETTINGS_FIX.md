@@ -22,8 +22,9 @@
   property, hiding field-specific 422 explanations behind the generic HTTP status.
 
 The SQLite scope persistence and inheritance calculation themselves were correct.
-Global Disabled is an intentional master stop, not a lost line override. The UI now
-shows the configured line mode and explains when Global Disabled masks it at runtime.
+Updated inheritance semantics: global settings are defaults, and explicit per-SIM values
+always override them, including Disabled. The UI shows the same effective values as
+the published Engine snapshot; there is no global master-stop mask.
 
 ## Behavior after the fix
 

@@ -64,7 +64,7 @@ def test_personal_prefix_only_and_no_provider_sms_matching(db):
     assert b.lookup('1','+33162323065',communication='sms')['action'] == 'allow'
 
 
-def test_modes_inherit_and_stop_independently(db):
+def test_modes_inherit_independently(db):
     b.save_rule(rule())
     b.save_settings('*', {'mode':'disabled','sms_mode':'monitor'})
     assert b.lookup('1','666',communication='sms')['would_block']
@@ -73,7 +73,7 @@ def test_modes_inherit_and_stop_independently(db):
     assert b.lookup('1','666',communication='sms')['action'] == 'reject'
     assert b.lookup('2','666',communication='sms')['action'] == 'allow'
     b.save_settings('*', {'mode':'enforce','sms_mode':'disabled'})
-    assert b.lookup('1','666',communication='sms')['mode'] == 'disabled'
+    assert b.lookup('1','666',communication='sms')['mode'] == 'enforce'
     assert b.settings('1')['effective']['mode'] == 'enforce'
 
 

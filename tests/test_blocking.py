@@ -239,12 +239,12 @@ def test_agi_protocol_and_fail_open(db, missing, mode, reject):
     assert time.monotonic() - started < 1.5
 
 
-def test_global_disabled_is_master_stop(db):
+def test_global_disabled_does_not_mask_line_override(db):
     rule()
     b.save_settings('1', {'mode': 'enforce'})
     assert b.lookup('1', '0612345678')['action'] == 'reject'
     b.save_settings('*', {'mode': 'disabled'})
-    assert b.lookup('1', '0612345678')['mode'] == 'disabled'
-    assert not b.lookup('1', '0612345678')['would_block']
+    assert b.lookup('1', '0612345678')['mode'] == 'enforce'
+    assert b.lookup('1', '0612345678')['would_block']
     b.save_settings('*', {'mode': 'monitor'})
     assert b.lookup('1', '0612345678')['action'] == 'reject'

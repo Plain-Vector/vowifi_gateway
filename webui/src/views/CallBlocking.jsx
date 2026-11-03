@@ -192,13 +192,11 @@ export default function CallBlocking({ instances, showToast }) {
         </select></label>
         <p>{inheritance('mode')}{changed('mode')}</p>
         {scope !== '*' && <button className="btn btn-ghost" onClick={() => inherit('mode')}>{tx("blocking.inheritMode")}</button>}
-        {scope !== '*' && settings.global.mode === 'disabled' && <p role="status">{tx("blocking.globalDisabledOverridesThisLineSModeAtRuntime")}</p>}
         <label>{tx('sms.filteringMode')}<select aria-label={tx('sms.filteringMode')} value={effective.sms_mode || 'disabled'} onChange={e => {
           if (e.target.value !== 'enforce' || window.confirm(tx('sms.enforceConfirm'))) config('sms_mode', e.target.value)
         }}>{['disabled','monitor','enforce'].map(value => <option key={value} value={value}>{tx(modes[value])}</option>)}</select></label>
         <p>{tx('sms.modeHelp')} {inheritance('sms_mode')}{changed('sms_mode')}</p>
         {scope !== '*' && <button className="btn btn-ghost" onClick={() => inherit('sms_mode')}>{tx('sms.inherit')}</button>}
-        {scope !== '*' && settings.global.sms_mode === 'disabled' && <p>{tx('sms.globalDisabled')}</p>}
         {[
           ['arcep', tx("blocking.arcepAutomatedCallingRanges"), tx("blocking.frenchRangesReservedForAutomatedCallingLegitimateBusinessesAnd")],
           ['block_withheld', tx("blocking.withheldCallerIds"), tx("blocking.theCallerDeliberatelyHidesTheirNumberDoctorsAndOther")],

@@ -91,9 +91,9 @@ and idempotent (blocking_migrations v1–v4). Existing messages and calls are no
 | blocking_imports | Provider rules, separate from personal rules; block/allow action and list priority |
 | blocking_events | Raw caller ID, line, timestamp, Asterisk call ID, structured decision; deduped per line/call ID |
 
-Global Disabled is a master stop: it masks every line mode, including Enforce overrides.
-Those overrides resume when global filtering is re-enabled.
-Line settings otherwise inherit global fields individually. A PUT replaces the line's overrides;
+Global settings are defaults. Each explicit per-SIM field overrides its global value,
+including Disabled, independently for call mode and SMS mode.
+Line settings inherit global fields individually when no override is present. A PUT replaces the line's overrides;
 null/omitted fields inherit. An empty object restores inheritance. Global omissions
 use defaults. Personal line rules extend global rules. Imported datasets and update
 schedules are global. Snapshots contain only effective settings and enabled applicable
@@ -154,7 +154,7 @@ Global and per-line settings are one form; the shared Saracroche database connec
 and schedule are a separate, clearly labeled form. No settings checkbox sends a write.
 Saving a scope sends its complete configuration (or override set), then reads back the
 authoritative values. Line inheritance can be restored per field or reset in the draft
-with confirmation. Global Disabled still masks line Enforce without deleting it.
+with confirmation. Explicit line modes take precedence even when the global default is Disabled.
 
 The 15-second operational poll refreshes rules, history and provider status only. It
 never replaces editable settings or provider drafts. Generation guards invalidate old
@@ -215,8 +215,8 @@ catalog. No access restriction was bypassed and no caller number was sent.
 Saracroche is **off by default**, independently of personal lists and ARCEP. The WebUI
 switch enables matching for the chosen global/line scope and attempts an initial update
 when the remote source is selected. With the switch off everywhere, neither manual
-remote updates nor the scheduler contact Saracroche. Global filtering Disabled also
-stops remote updates. An in-progress network request may finish after disable; subsequent
+remote updates nor the scheduler contact Saracroche. Remote updates stop when Saracroche is inactive for calls in every scope; an explicit
+active per-SIM configuration is respected even if the global call mode is Disabled. An in-progress network request may finish after disable; subsequent
 list requests check the switch again. Retained data is not applied to disabled scopes.
 
 The server source follows the Android catalog protocol; this is not a promise of an
@@ -367,8 +367,9 @@ source unavailability, scheduler cancellation, API validation/token/CSRF checks,
 callback deduplication, existing call persistence, and rendered SIP/WebRTC/SMS/outbound
 routing. Rendering and AGI process tests do not replace a live Asterisk/IMS call test.
 
-Rollback immediately to Disabled globally (the master stop),
-or disable the affected lines individually. For code rollback, restore the previous
+To stop filtering everywhere, set the global defaults and every explicit per-SIM
+call/SMS mode override to Disabled (or remove those overrides so they inherit Disabled).
+Changing only global defaults does not stop explicitly enabled SIMs. For code rollback, restore the previous
 engine/control image and reviewed source in a maintenance window. Additive blocking_*
 tables may remain: old code ignores them. Restore the SQLite backup only if needed;
 doing so also discards later ordinary calls/SMS. Keep production patches intact.

@@ -83,11 +83,6 @@ def settings(scope='*'):
     global_config = {**DEFAULT_CONFIG, **json.loads(rows.get('*', '{}'))}
     override = json.loads(rows.get(scope, '{}')) if scope != '*' else {}
     effective = {**global_config, **override}
-    # Global Disabled is the emergency stop, including lines with Enforce overrides.
-    if global_config['mode'] == 'disabled':
-        effective['mode'] = 'disabled'
-    if global_config['sms_mode'] == 'disabled':
-        effective['sms_mode'] = 'disabled'
     return {'scope': scope, 'global': global_config, 'override': override,
             'effective': effective}
 

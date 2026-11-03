@@ -25,8 +25,8 @@ whitelists remain untouched. If a matching row is disabled, quick block returns 
 localized conflict instead of enabling unrelated channels; edit it explicitly in Personal
 lists. The app has no existing contact-blocking action to extend.
 
-`sms_mode` inherits global/per-SIM settings independently of call `mode`. Global Disabled
-is an emergency stop for its own channel only. Monitor evaluates and delivers; Enforce
+`sms_mode` inherits global/per-SIM settings independently of call `mode`. Explicit per-SIM settings override global values, including Disabled; a missing global
+sms_mode defaults to Disabled only for SIMs without an explicit override. Monitor evaluates and delivers; Enforce
 suppresses personal blacklist matches unless personally whitelisted. ARCEP, Saracroche,
 withheld/unavailable call policies never participate in SMS evaluation. Alphanumeric or
 unusable sender identities fail open unless a supported normalized number can be matched.
@@ -155,7 +155,8 @@ Manual upgrade after review (no automatic merge/deployment):
    blocked SMS appear only in body-free filter history, and carrier RP-ACK is accepted.
    Verify both service numbers and regular numbers where the carrier supports them.
 
-Operational rollback: set global SMS mode Disabled and retain the updated Control/UI.
+Operational rollback: set global SMS mode Disabled and disable/remove every explicit
+per-SIM SMS mode override as well; retain the updated Control/UI.
 This stops SMS filtering and preserves all records/rules. Reverting to an older Engine
 image is compatible with new Control snapshots because call and SMS tables are separate;
 recreate Engines in maintenance, preserving private patches and accepting interruption.
