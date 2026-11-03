@@ -6,10 +6,8 @@
 #   - ami_usim.py   : reference USIM<->AMI bridge, patched to VERIFY PIN + report status
 #   - render.py     : renders /config/instance.json -> Asterisk configs at container start
 #
-# Reproducibility: all build inputs are pinned so a from-scratch build on any machine/arch
-# (amd64/arm64) is functionally identical — the base image tag below, sysmocom asterisk
-# (sysmocom/20.7.0) + pjproject (sysmocom/2.14) + cherry-pick f1b60dc, patches/asterisk/*.py.
-# Pin the base tag rather than :latest for determinism.
+# Core SIP source revisions are pinned below. Fedora/packages/Python dependencies
+# remain independently versioned; record the core source/build inputs in the image.
 FROM fedora:40
 
 # pcsc-lite is pinned to a fixed upstream version and built from source (see below), so the
@@ -17,6 +15,8 @@ FROM fedora:40
 # same PCSC_VERSION the installer pins on the host and the control image uses. Avoids the
 # client/server protocol mismatch that distro-default pcsc-lite packages cause.
 ARG PCSC_VERSION=2.3.3
+ARG ASTERISK_COMMIT=d231cb2c658545773fcd5eb9de787219b9ef6566
+ARG PJPROJECT_COMMIT=20537ab1e6beb2baf9ec15599e0217a601cf7ce5
 
 WORKDIR /home/asterisk-build
 
@@ -50,6 +50,10 @@ RUN cd /tmp && \
 COPY patches/asterisk/ /home/asterisk-build/patches/asterisk/
 RUN git clone --depth=1 --branch sysmocom/2.14 https://gitea.sysmocom.de/sysmocom/pjproject.git && \
     git clone --depth=1 --branch sysmocom/20.7.0 https://gitea.sysmocom.de/sysmocom/asterisk.git && \
+    git -C pjproject fetch --depth=1 origin "$PJPROJECT_COMMIT" && \
+    git -C pjproject checkout --detach FETCH_HEAD && \
+    git -C asterisk fetch --depth=1 origin "$ASTERISK_COMMIT" && \
+    git -C asterisk checkout --detach FETCH_HEAD && \
     cd asterisk && \
     git config user.email "build@vowifi" && git config user.name "vowifi build" && \
     git fetch origin f1b60dcd9568c4045512fd0d8b619b9fb91a7f35 && \
@@ -61,7 +65,11 @@ RUN git clone --depth=1 --branch sysmocom/2.14 https://gitea.sysmocom.de/sysmoco
     make menuselect/menuselect menuselect-tree menuselect.makeopts && \
     ./menuselect/menuselect --enable codec_opus --disable BUILD_NATIVE && \
     make -j$(nproc) && \
-    make install
+    make install && \
+    mkdir -p /opt/vowifi && \
+    { printf 'asterisk_base=%s\npjproject=%s\n' "$ASTERISK_COMMIT" "$PJPROJECT_COMMIT"; \
+      sha256sum /home/asterisk-build/patches/asterisk/*.py \
+        /usr/lib/asterisk/modules/res_pjsip_session.so; } > /opt/vowifi/ims-build-manifest.txt
 
 RUN python3 -m pip install panoramisk
 

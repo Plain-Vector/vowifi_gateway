@@ -103,6 +103,8 @@ jobs:
         run: |
           docker run --rm --entrypoint asterisk vowifi/engine:ci -V
           docker run --rm --entrypoint python3 vowifi/engine:ci -c "import sys; sys.path.insert(0,'/usr/local/bin'); import call_filter, sms_filter, blocking_match, notify; assert blocking_match.normalize('0612345678') == '+33612345678'; print('Engine imports passed')"
+      - name: Test IMS precondition admission, PRACK, UPDATE and endpoint isolation
+        run: docker run --rm --entrypoint python3 -v "$PWD/tests/engine_precondition_smoke.py:/tmp/engine_precondition_smoke.py:ro" vowifi/engine:ci /tmp/engine_precondition_smoke.py
       - name: Test real Asterisk SMS filtering and synthetic IMS acknowledgements
         run: docker run --rm --entrypoint python3 -v "$PWD/tests/engine_sms_smoke.py:/tmp/engine_sms_smoke.py:ro" vowifi/engine:ci /tmp/engine_sms_smoke.py
       - name: Exercise unattended fresh-server installer
