@@ -30,7 +30,7 @@ def settings(client, scope='*'):
 
 
 def test_global_line_replace_inheritance_and_restart(client, db):
-    global_value = {'mode': 'monitor', 'arcep': True, 'saracroche': True,
+    global_value = {'mode': 'monitor', 'sms_mode': 'disabled', 'arcep': True, 'saracroche': True,
                     'block_withheld': True, 'block_unavailable': False}
     assert client.put('/api/blocking/settings', json=global_value).status_code == 200
     override = {'saracroche': False, 'mode': 'enforce'}

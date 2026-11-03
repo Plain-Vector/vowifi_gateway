@@ -411,3 +411,12 @@ starting with 1–9 (for example `666` and `1023`), globally or per SIM. Digits 
 short codes cannot be prefix rules. Regular French and international normalization and
 personal whitelist precedence are unchanged. Incoming filtering does not apply to
 user-initiated outgoing calls, including service numbers.
+
+
+## Incoming SMS
+
+Personal rules now select calls, SMS or both; existing rules migrate to calls only.
+SMS mode is independent and defaults to Disabled. ARCEP/Saracroche remain call-only.
+See [SMS filtering architecture, ACK findings and Engine deployment](SMS_FILTERING.md).
+The Engine must be rebuilt/recreated to install the incoming SMS gate; a Control/UI
+reload alone cannot suppress SMS forwarding from an old Engine.

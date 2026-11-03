@@ -78,7 +78,7 @@
     "filteringSettings": "Paramètres de filtrage",
     "globalFilteringSettings": "Filtrage global",
     "lineFilteringSettings": "Filtrage de la ligne",
-    "defaultsForAllSimsGlobalDisabledStopsAllFiltering": "Valeurs par défaut pour toutes les SIM. La désactivation globale arrête tout filtrage.",
+    "defaultsForAllSimsGlobalDisabledStopsAllFiltering": "Valeurs par défaut pour toutes les SIM. La désactivation globale prévaut sur les réglages par SIM, séparément pour les appels et les SMS.",
     "changesAffectOnlyThisSimUnmodifiedFieldsInheritGlobal": "Ces modifications concernent uniquement cette SIM ; les autres champs héritent des paramètres globaux.",
     "errorEditsRetained": "Erreur — saisie conservée",
     "saved": "Enregistré",
@@ -777,7 +777,8 @@
     "duplicateRule": "Cette règle existe déjà",
     "ruleNotFound": "Règle introuvable",
     "unknownLine": "Ligne inconnue",
-    "blockingTokenRequired": "Jeton d’accès au filtrage des appels requis"
+    "blockingTokenRequired": "Jeton d’accès au filtrage des appels requis",
+    "disabledQuickRule": "Cette règle est désactivée ; modifiez-la dans les listes personnelles avant de bloquer"
   },
   "saveStatus": {
     "Loading": "Chargement",
@@ -857,5 +858,31 @@
     "maxLength": "Nombre maximal de caractères : {{count, number}}.",
     "fieldError": "{{field}} : {{detail}}",
     "request": "Requête"
+  },
+  "sms": {
+    "applyTo": "Appliquer à",
+    "calls": "Appels uniquement",
+    "smsOnly": "SMS uniquement",
+    "both": "Appels et SMS",
+    "blockNumber": "Bloquer le numéro",
+    "unblockNumber": "Débloquer le numéro",
+    "blockQuestion": "Que souhaitez-vous bloquer ?",
+    "unblockQuestion": "Que souhaitez-vous débloquer ?",
+    "quickHelp": "Modifie uniquement la règle exacte de liste noire de cette SIM. Les règles globales, préfixes et entrées de liste blanche restent actifs. Le blocage ajoute le type choisi ; le déblocage retire uniquement ce type.",
+    "ruleUpdated": "Règle personnelle mise à jour",
+    "history": "Historique du filtrage SMS",
+    "historyHelp": "Décisions sur les SMS entrants, sans contenu. Le mode observation livre normalement ; le mode blocage supprime les correspondances. Les SMS sortants sont inchangés.",
+    "historySim": "SIM de l’historique SMS",
+    "historyDecision": "Décision de l’historique SMS",
+    "suppressed": "Supprimé",
+    "sender": "Expéditeur",
+    "mode": "Mode SMS",
+    "filteringMode": "Mode de filtrage SMS",
+    "modeHelp": "Désactivé : aucun filtrage SMS. Observation : évaluer et livrer. Blocage : supprimer les correspondances de liste noire personnelle sauf liste blanche. ARCEP et Saracroche ne s’appliquent pas aux SMS. Nécessite le moteur mis à jour ; les anciens moteurs continuent la livraison.",
+    "inherit": "Hériter du mode SMS",
+    "globalDisabled": "La désactivation globale des SMS prévaut pour cette SIM. Le mode appels est indépendant.",
+    "enforceConfirm": "Le blocage peut masquer des SMS entrants légitimes. Continuer la modification ?",
+    "lookupFailed": "Échec de vérification locale SMS ; livraison autorisée",
+    "handoffFailed": "Échec de transmission de la décision SMS ; livraison autorisée"
   }
 }

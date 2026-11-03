@@ -6,7 +6,7 @@ ARCEP_PREFIXES = tuple('+33' + p for p in (
     '162', '163', '270', '271', '377', '378', '424', '425', '568', '569', '948', '949'
 )) + ('+5905987', '+5909475', '+5945988', '+5949476', '+5965989', '+5969477',
       '+2622688', '+2622689', '+2629478', '+2629479')
-DEFAULT_CONFIG = {'mode': 'monitor', 'arcep': False, 'saracroche': False,
+DEFAULT_CONFIG = {'mode': 'monitor', 'sms_mode': 'disabled', 'arcep': False, 'saracroche': False,
                   'block_withheld': False, 'block_unavailable': False}
 
 
@@ -31,12 +31,14 @@ def normalize(value, prefix=False):
     return value
 
 
-def decision(conn, caller, presentation='allowed'):
+def decision(conn, caller, presentation='allowed', communication='calls'):
     settings = dict(conn.execute('SELECT key,value FROM settings'))
-    mode = settings['mode']
+    mode = settings.get('sms_mode', 'disabled') if communication == 'sms' else settings['mode']
     incoming = normalize(caller)
-    if incoming is None and re.fullmatch(r'[1-9][0-9]{1,5}', (caller or '').strip()):
-        incoming = caller.strip()
+    service = re.search(r'(?:sip:|sips:|tel:)([^@;>]+)', caller or '', re.I)
+    short = service.group(1) if service else (caller or '').strip()
+    if incoming is None and re.fullmatch(r'[1-9][0-9]{1,5}', short):
+        incoming = short
     result = {'mode': mode, 'normalized': incoming, 'would_block': False,
               'action': 'allow', 'source': 'none', 'rule': '', 'reason': 'No enabled rule matched'}
     if mode == 'disabled':
@@ -50,6 +52,11 @@ def decision(conn, caller, presentation='allowed'):
     withheld = presentation.startswith('prohib') or (caller or '').strip().lower() in (
         'anonymous', 'private', 'withheld', 'restricted')
     unavailable = not number or presentation == 'unavailable'
+    if communication == 'sms':
+        withheld = False
+        # Personal rules only; an unusable/alphanumeric sender is allowed.
+        if unavailable:
+            return result
     if withheld or unavailable:
         kind = 'withheld' if withheld else 'unavailable'
         match = settings.get('block_' + kind) == 'true'
@@ -61,8 +68,11 @@ def decision(conn, caller, presentation='allowed'):
         candidates += [number[:i] + '#' * (len(number) - i) for i in range(1, len(number))]
         placeholders = ','.join('?' for _ in candidates)
         def find(kind):
+            table = 'sms_rules' if communication == 'sms' else 'rules'
+            if communication == 'sms' and not conn.execute("SELECT 1 FROM sqlite_master WHERE name='sms_rules'").fetchone():
+                return None  # old snapshots contain call rules only
             return conn.execute(
-                f'SELECT number,kind,priority FROM rules WHERE kind=? AND number IN ({placeholders}) '
+                f'SELECT number,kind,priority FROM {table} WHERE kind=? AND number IN ({placeholders}) '
                 'AND (match_type IN (\'prefix\',\'android\') OR number=?) '
                 'ORDER BY priority ASC,length(replace(number,\'#\',\'\')) DESC LIMIT 1',
                 (kind, *candidates, number)).fetchone()
@@ -71,9 +81,9 @@ def decision(conn, caller, presentation='allowed'):
             result.update(source='whitelist', rule=allowed[0], reason='Personal whitelist')
             return result
         blocked = find('block')
-        arcep = next((p for p in ARCEP_PREFIXES if number.startswith(p)), None)
-        imported = find('saracroche') if settings.get('saracroche') == 'true' else None
-        provider_allow = find('saracroche_allow') if settings.get('saracroche') == 'true' else None
+        arcep = next((p for p in ARCEP_PREFIXES if number.startswith(p)), None) if communication == 'calls' else None
+        imported = find('saracroche') if communication == 'calls' and settings.get('saracroche') == 'true' else None
+        provider_allow = find('saracroche_allow') if communication == 'calls' and settings.get('saracroche') == 'true' else None
         if provider_allow and (not imported or provider_allow[2] <= imported[2]):
             imported = provider_allow
         match = bool(blocked or (arcep and settings.get('arcep') == 'true')

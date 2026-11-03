@@ -40,6 +40,7 @@ class Strict(BaseModel):
 
 class Settings(Strict):
     mode: Literal['disabled', 'monitor', 'enforce'] | None = None
+    sms_mode: Literal['disabled', 'monitor', 'enforce'] | None = None
     arcep: bool | None = None
     saracroche: bool | None = None
     block_withheld: bool | None = None
@@ -53,6 +54,7 @@ class Rule(Strict):
     match_type: Literal['exact', 'prefix'] = 'exact'
     description: str = Field(default='', max_length=500)
     enabled: bool = True
+    communication: Literal['calls', 'sms', 'both'] = 'calls'
 
     def normalized(self):
         scope_check(self.scope)
@@ -63,10 +65,13 @@ class Rule(Strict):
         value['number'] = number if short_exact else normalize(self.number, prefix=self.match_type == 'prefix')
         if not value['number']:
             raise HTTPException(422, 'Use an exact 2-6 digit service number starting 1-9, a French number or international +/00 number; no wildcards or regex')
+        if 'communication' not in self.model_fields_set:
+            value.pop('communication', None)
         return value
 
 
 class Lookup(Strict):
+    communication: Literal['calls', 'sms'] = 'calls'
     instance: str = Field(max_length=64)
     number: str = Field(default='', max_length=128)
     presentation: Literal['allowed', 'prohib', 'unavailable'] = 'allowed'
@@ -136,7 +141,7 @@ def delete_rule(rid: int):
 @router.post('/lookup')
 def lookup(body: Lookup):
     scope_check(body.instance)
-    return blocking.lookup(body.instance, body.number, body.presentation)
+    return blocking.lookup(body.instance, body.number, body.presentation, body.communication)
 
 
 @router.get('/events')
@@ -197,5 +202,38 @@ class FilterDecision(Strict):
 class FilterReport(Strict):
     peer: str = Field(max_length=128)
     call_id: str = Field(min_length=1, max_length=128)
+    ts: int = Field(ge=0)
+    decision: FilterDecision
+
+
+class QuickRule(Rule):
+    action: Literal['block', 'unblock'] = 'block'
+    kind: Literal['block'] = 'block'
+    match_type: Literal['exact'] = 'exact'
+
+
+@router.post('/quick-rule')
+def quick_rule(body: QuickRule):
+    value = body.normalized()
+    value.setdefault('communication', 'calls')
+    try:
+        blocking.quick_rule(value, body.action)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return {'ok':True}
+
+
+@router.get('/sms-events')
+def sms_events(instance: str | None = None, decision: Literal['allowed', 'suppressed'] | None = None,
+               limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)):
+    if instance:
+        scope_check(instance)
+    rows = blocking.sms_events(instance, decision, limit + 1, offset)
+    return {'events':rows[:limit], 'has_more':len(rows) > limit}
+
+
+class SMSReport(Strict):
+    event_id: str = Field(min_length=1, max_length=128)
+    peer: str = Field(max_length=128)
     ts: int = Field(ge=0)
     decision: FilterDecision

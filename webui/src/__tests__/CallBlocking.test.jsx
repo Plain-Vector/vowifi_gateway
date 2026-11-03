@@ -53,6 +53,7 @@ beforeEach(async () => {
       if (method === 'DELETE') { personalRules = personalRules.filter(rule => rule.id !== Number(url.pathname.split('/').at(-1))); return { ok: true } }
       return { rules: personalRules.filter(rule => rule.scope === scope && rule.kind === url.searchParams.get('kind')) }
     }
+    if (url.pathname === '/sms-events') return { events: [], has_more: false }
     if (url.pathname === '/events') return { events: structuredClone(historyEvents), has_more: false }
     throw new Error('Unexpected request ' + method + ' ' + path)
   })
@@ -60,6 +61,35 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 describe('explicit settings lifecycle', () => {
+  it('saves SMS mode independently and inherits it on another SIM', async () => {
+    await mount()
+    fireEvent.change(screen.getByLabelText('SMS filtering mode'), { target:{value:'monitor'} })
+    await save()
+    expect(configs['*'].sms_mode).toBe('monitor'); expect(configs['*'].mode).toBe('monitor')
+    await switchScope('1')
+    fireEvent.change(screen.getByLabelText('SMS filtering mode'), { target:{value:'enforce'} })
+    await save()
+    expect(configs['1']).toEqual({sms_mode:'enforce'})
+    await switchScope('2')
+    expect(screen.getByLabelText('SMS filtering mode').value).toBe('monitor')
+    await switchScope('1')
+    fireEvent.click(screen.getByText('Inherit SMS mode')); await save()
+    expect(configs['1']).toEqual({})
+  })
+  it('saves and edits the personal rule communication selector', async () => {
+    await mount()
+    fireEvent.change(screen.getByLabelText('Number or prefix'), { target:{value:'666'} })
+    fireEvent.change(screen.getByLabelText('Apply to'), { target:{value:'sms'} })
+    fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}))
+    await screen.findByRole('button',{name:'Edit'})
+    expect(personalRules[0].communication).toBe('sms')
+    fireEvent.click(screen.getByRole('button',{name:'Edit'}))
+    expect(screen.getByLabelText('Apply to').value).toBe('sms')
+    fireEvent.change(screen.getByLabelText('Apply to'), { target:{value:'both'} })
+    fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}))
+    await waitFor(() => expect(personalRules[0].communication).toBe('both'))
+  })
+
   it('keeps rapid checkbox edits through polling; writes once and survives remount', async () => {
     await mount()
     fireEvent.click(screen.getByLabelText('ARCEP automated-calling ranges'))

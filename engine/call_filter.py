@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Bounded local AGI lookup. No HTTP or shell in the decision path."""
+from contextlib import closing
 import base64
 import json
 import os
@@ -17,11 +18,11 @@ def timeout(*_):
     raise TimeoutError('Local lookup deadline exceeded')
 
 
-def lookup(path, caller, presentation):
+def lookup(path, caller, presentation, communication='calls'):
     start = time.monotonic()
-    with sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro&immutable=1', uri=True, timeout=0.05) as c:
+    with closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro&immutable=1', uri=True, timeout=0.05)) as c:
         c.set_progress_handler(lambda: int(time.monotonic() - start > 0.1), 100)
-        return decision(c, caller, presentation)
+        return decision(c, caller, presentation, communication)
 
 
 def main():

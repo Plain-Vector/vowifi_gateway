@@ -78,7 +78,7 @@
     "filteringSettings": "Filtering settings",
     "globalFilteringSettings": "Global filtering settings",
     "lineFilteringSettings": "Line filtering settings",
-    "defaultsForAllSimsGlobalDisabledStopsAllFiltering": "Defaults for all SIMs. Global Disabled stops all filtering.",
+    "defaultsForAllSimsGlobalDisabledStopsAllFiltering": "Defaults for all SIMs. Global Disabled overrides per-SIM settings independently for calls and SMS.",
     "changesAffectOnlyThisSimUnmodifiedFieldsInheritGlobal": "Changes affect only this SIM; unmodified fields inherit Global.",
     "errorEditsRetained": "Error — edits retained",
     "saved": "Saved",
@@ -777,7 +777,8 @@
     "duplicateRule": "This rule already exists",
     "ruleNotFound": "Rule not found",
     "unknownLine": "Unknown line",
-    "blockingTokenRequired": "Call Blocking access token required"
+    "blockingTokenRequired": "Call Blocking access token required",
+    "disabledQuickRule": "This rule is disabled; edit it in Personal lists before blocking"
   },
   "saveStatus": {
     "Loading": "Loading",
@@ -857,5 +858,31 @@
     "maxLength": "Maximum characters: {{count, number}}.",
     "fieldError": "{{field}}: {{detail}}",
     "request": "Request"
+  },
+  "sms": {
+    "applyTo": "Apply to",
+    "calls": "Calls only",
+    "smsOnly": "SMS only",
+    "both": "Calls and SMS",
+    "blockNumber": "Block number",
+    "unblockNumber": "Unblock number",
+    "blockQuestion": "What would you like to block?",
+    "unblockQuestion": "What would you like to unblock?",
+    "quickHelp": "Changes only the exact blacklist rule for this SIM. Global rules, prefixes and whitelist entries remain in effect. Blocking adds the selected type; unblocking removes only that type.",
+    "ruleUpdated": "Personal rule updated",
+    "history": "SMS filtering history",
+    "historyHelp": "Body-free incoming SMS decisions. Monitor delivers normally; Enforce suppresses matching messages. Outgoing SMS are unaffected.",
+    "historySim": "SMS history SIM",
+    "historyDecision": "SMS history decision",
+    "suppressed": "Suppressed",
+    "sender": "Sender",
+    "mode": "SMS mode",
+    "filteringMode": "SMS filtering mode",
+    "modeHelp": "Disabled: no SMS filtering. Monitor: evaluate and deliver. Enforce: suppress personal blacklist matches unless whitelisted. ARCEP and Saracroche do not apply to SMS. Requires the updated Engine; legacy Engines continue delivery.",
+    "inherit": "Inherit SMS mode",
+    "globalDisabled": "Global SMS Disabled overrides this SIM at runtime. Call mode is independent.",
+    "enforceConfirm": "Enforce can suppress legitimate incoming SMS. Continue editing this setting?",
+    "lookupFailed": "Local SMS lookup failed; SMS allowed",
+    "handoffFailed": "SMS policy handoff failed; SMS allowed"
   }
 }

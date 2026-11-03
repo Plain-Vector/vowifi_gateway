@@ -60,6 +60,20 @@ def init():
                 records = c.execute('SELECT number,match_type,action,priority FROM blocking_imports WHERE provider=?', (provider[0],)).fetchall()
                 c.execute('UPDATE blocking_providers SET coverage=? WHERE name=?', (json.dumps(calculate(records)), provider[0]))
             c.execute('INSERT INTO blocking_migrations VALUES(4)')
+        if not c.in_transaction:
+            c.execute('BEGIN')
+        if not c.execute('SELECT 1 FROM blocking_migrations WHERE version=5').fetchone():
+            c.execute("ALTER TABLE blocking_rules ADD COLUMN communication TEXT NOT NULL DEFAULT 'calls' CHECK(communication IN ('calls','sms','both'))")
+        c.execute("""CREATE TABLE IF NOT EXISTS blocking_sms_events(
+          id INTEGER PRIMARY KEY, instance TEXT NOT NULL, peer TEXT NOT NULL,
+          ts INTEGER NOT NULL, event_id TEXT NOT NULL, decision TEXT NOT NULL,
+          UNIQUE(instance,event_id))""")
+        c.execute('CREATE INDEX IF NOT EXISTS blocking_sms_events_ts ON blocking_sms_events(ts DESC)')
+        c.execute("""CREATE TABLE IF NOT EXISTS sms_delivery_receipts(
+          instance TEXT NOT NULL,event_id TEXT NOT NULL,ts INTEGER NOT NULL,
+          PRIMARY KEY(instance,event_id))""")
+        c.execute('CREATE INDEX IF NOT EXISTS sms_delivery_receipts_ts ON sms_delivery_receipts(ts)')
+        c.execute('INSERT OR IGNORE INTO blocking_migrations VALUES(5)')
     publish_all()
 
 
@@ -72,6 +86,8 @@ def settings(scope='*'):
     # Global Disabled is the emergency stop, including lines with Enforce overrides.
     if global_config['mode'] == 'disabled':
         effective['mode'] = 'disabled'
+    if global_config['sms_mode'] == 'disabled':
+        effective['sms_mode'] = 'disabled'
     return {'scope': scope, 'global': global_config, 'override': override,
             'effective': effective}
 
@@ -100,14 +116,17 @@ def rules(scope='*', kind=None, search='', enabled=None):
 
 
 def save_rule(value, rid=None):
+    value = dict(value)
     with _lock, store._conn() as c:
+        previous = c.execute('SELECT communication FROM blocking_rules WHERE id=?', (rid,)).fetchone() if rid else None
+        value.setdefault('communication', previous[0] if previous else 'calls')
         if rid is None:
-            cur = c.execute('''INSERT INTO blocking_rules(scope,kind,number,match_type,description,enabled)
-                VALUES(:scope,:kind,:number,:match_type,:description,:enabled)''', value)
+            cur = c.execute('''INSERT INTO blocking_rules(scope,kind,number,match_type,description,enabled,communication)
+                VALUES(:scope,:kind,:number,:match_type,:description,:enabled,:communication)''', value)
             rid = cur.lastrowid
         else:
             cur = c.execute('''UPDATE blocking_rules SET scope=:scope,kind=:kind,number=:number,
-                match_type=:match_type,description=:description,enabled=:enabled WHERE id=:id''',
+                match_type=:match_type,description=:description,enabled=:enabled,communication=:communication WHERE id=:id''',
                 {**value, 'id': rid})
             if not cur.rowcount:
                 raise KeyError(rid)
@@ -133,13 +152,17 @@ def build_snapshot(c, iid):
     effective = settings(iid)['effective']
     c.executescript('''CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);
         CREATE TABLE rules(kind TEXT,number TEXT,match_type TEXT,priority INTEGER DEFAULT 0);
+        CREATE TABLE sms_rules(kind TEXT,number TEXT,match_type TEXT,priority INTEGER DEFAULT 0);
+        CREATE INDEX sms_rules_lookup ON sms_rules(kind,number);
         CREATE INDEX rules_lookup ON rules(kind,number);''')
     c.executemany('INSERT INTO settings VALUES(?,?)',
                   [(k, json.dumps(v) if isinstance(v, bool) else v) for k, v in effective.items()])
     with store._conn() as source:
         c.executemany('INSERT INTO rules(kind,number,match_type) VALUES(?,?,?)', source.execute(
-            'SELECT kind,number,match_type FROM blocking_rules WHERE scope IN (\'*\',?) AND enabled=1', (iid,)))
-        c.executemany('INSERT INTO rules VALUES(?,?,?,?)', source.execute(
+            'SELECT kind,number,match_type FROM blocking_rules WHERE scope IN (\'*\',?) AND enabled=1 AND communication IN (\'calls\',\'both\')', (iid,)))
+        c.executemany('INSERT INTO sms_rules(kind,number,match_type) VALUES(?,?,?)', source.execute(
+            "SELECT kind,number,match_type FROM blocking_rules WHERE scope IN ('*',?) AND enabled=1 AND communication IN ('sms','both')", (iid,)))
+        c.executemany('INSERT INTO rules(kind,number,match_type,priority) VALUES(?,?,?,?)', source.execute(
             "SELECT CASE WHEN action='allow' THEN provider || '_allow' ELSE provider END,"
             "number,match_type,priority FROM blocking_imports"))
 
@@ -167,11 +190,11 @@ def publish_all():
         publish(str(inst['id']))
 
 
-def lookup(iid, caller, presentation='allowed'):
+def lookup(iid, caller, presentation='allowed', communication='calls'):
     # Same query and schema as the AGI, without writing test events.
     with _lock, closing(sqlite3.connect(':memory:')) as c:
         build_snapshot(c, iid)
-        return decision(c, caller, presentation)
+        return decision(c, caller, presentation, communication)
 
 
 def record(iid, peer, call_id, result, ts=None):
@@ -202,3 +225,62 @@ def events(iid=None, limit=100, offset=0, decision=None, source=None, since=None
         rows = c.execute('SELECT * FROM blocking_events ' + where +
                          ' ORDER BY ts DESC,id DESC LIMIT ? OFFSET ?', (*args, limit, offset))
         return [{**dict(r), 'decision': json.loads(r['decision'])} for r in rows]
+
+
+def quick_rule(value, action):
+    """One exact row per scope/kind/number/match; merge/subtract channel sets atomically.
+
+    Never modify global, prefix or allow rules as a side effect of a per-SIM shortcut.
+    """
+    channels = {'calls', 'sms'} if value['communication'] == 'both' else {value['communication']}
+    with _lock, store._conn() as c:
+        existing = c.execute("SELECT * FROM blocking_rules WHERE scope=? AND kind='block' AND number=? AND match_type='exact'",
+                             (value['scope'], value['number'])).fetchone()
+        if existing and not existing['enabled'] and action == 'block':
+            raise ValueError('This rule is disabled; edit it in Personal lists before blocking')
+        current = ({'calls', 'sms'} if existing['communication'] == 'both' else {existing['communication']}) if existing else set()
+        selected = current | channels if action == 'block' else current - channels
+        if existing and not selected:
+            c.execute('DELETE FROM blocking_rules WHERE id=?', (existing['id'],))
+        elif selected:
+            communication = 'both' if len(selected) == 2 else next(iter(selected))
+            if existing:
+                c.execute('UPDATE blocking_rules SET communication=?,enabled=? WHERE id=?',
+                          (communication, 1 if action == 'block' else existing['enabled'], existing['id']))
+            elif action == 'block':
+                c.execute("INSERT INTO blocking_rules(scope,kind,number,match_type,communication) VALUES(?,'block',?,'exact',?)",
+                          (value['scope'], value['number'], communication))
+    publish_all()
+
+
+def record_sms(iid, report):
+    if report['decision']['mode'] == 'disabled':
+        return
+    with _lock, store._conn() as c:
+        c.execute('INSERT OR IGNORE INTO blocking_sms_events(instance,peer,ts,event_id,decision) VALUES(?,?,?,?,?)',
+                  (iid, report['peer'], report['ts'], report['event_id'], json.dumps(report['decision'])))
+
+
+def deliver_sms(iid, peer, body, report):
+    """Atomically claim an engine callback and save once; never deduplicate sender/body."""
+    now = int(time.time())
+    with _lock, store._conn() as c:
+        if report:
+            cur = c.execute('INSERT OR IGNORE INTO sms_delivery_receipts VALUES(?,?,?)', (iid, report['event_id'], now))
+            if not cur.rowcount:
+                return None
+            c.execute('DELETE FROM sms_delivery_receipts WHERE ts<?', (now - 30*86400,))
+        cur = c.execute("INSERT INTO messages(instance,direction,peer,body,status,ts) VALUES(?,'in',?,?,'ok',?)", (iid, peer, body, now))
+        return {'id':cur.lastrowid, 'instance':iid, 'direction':'in', 'peer':peer, 'body':body, 'status':'ok', 'error':None, 'ts':now}
+
+
+def sms_events(iid=None, outcome=None, limit=100, offset=0):
+    clauses, args = [], []
+    if iid:
+        clauses.append('instance=?'); args.append(iid)
+    if outcome:
+        clauses.append("json_extract(decision,'$.action')=?"); args.append('reject' if outcome == 'suppressed' else 'allow')
+    where = 'WHERE ' + ' AND '.join(clauses) if clauses else ''
+    with store._conn() as c:
+        return [{**dict(row), 'decision':json.loads(row['decision'])} for row in c.execute(
+            'SELECT * FROM blocking_sms_events ' + where + ' ORDER BY ts DESC,id DESC LIMIT ? OFFSET ?', (*args,limit,offset))]

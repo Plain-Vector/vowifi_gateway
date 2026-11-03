@@ -1603,6 +1603,23 @@ def _call_disposition(dialstatus: str, cause: int, direction: str = "out") -> st
     return (dialstatus.lower() if dialstatus else "cancelled")
 
 
+def _sms_report(encoded):
+    """Invalid optional diagnostics must never prevent normal SMS delivery."""
+    from .blocking_api import SMSReport
+    try:
+        if not isinstance(encoded, str) or len(encoded) > 8192:
+            return None
+        report = SMSReport.model_validate_json(base64.b64decode(encoded, validate=True)).model_dump()
+        verdict = report['decision']
+        if verdict['source'] not in ('none', 'whitelist', 'blacklist', 'error'):
+            return None
+        if verdict['action'] == 'reject' and (verdict['mode'] != 'enforce' or not verdict['would_block']):
+            return None
+        return report
+    except Exception:
+        return None
+
+
 @app.post("/api/engine/event")
 async def api_engine_event(payload: dict, request: Request):
     """Receives notify.py callbacks from engine containers."""
@@ -1628,6 +1645,11 @@ async def api_engine_event(payload: dict, request: Request):
             store.update_call(rec["id"], "blocked", ended=True)
             await hub.broadcast({"type": "call", "instance": iid, "blocked": True})
         return {"ok": True}
+    if event == "sms_filter" and len(args) == 1:
+        report = _sms_report(args[0])
+        if report and cfg.get_instance(iid):
+            await asyncio.to_thread(blocking.record_sms, iid, report)
+        return {"ok": True}
     if event == "sms_in" and len(args) >= 2:
         try:
             text = base64.b64decode(args[1]).decode(errors="replace")
@@ -1648,7 +1670,22 @@ async def api_engine_event(payload: dict, request: Request):
             log.info("dropping empty-body inbound SMS from %r (internal signalling / binary/OTA "
                      "SIM message — no displayable text)", sender)
             return {"ok": True, "dropped": "empty_body"}
-        rec = store.add_message(iid, "in", sender, text)
+        report = _sms_report(args[2]) if len(args) > 2 else None
+        # The new engine already evaluated the immutable local snapshot before SIP forwarding.
+        # Legacy engines cannot suppress SIP forwarding; do not pretend Control can do so.
+        if report:
+            if report['decision']['action'] == 'reject':
+                # An sms_in callback means the engine continued delivery (e.g. AGI
+                # command acknowledgement failed). Preserve that fail-open outcome.
+                report['decision'].update(action='allow', source='error',
+                    reason='SMS policy handoff failed; SMS allowed')
+            try:
+                await asyncio.to_thread(blocking.record_sms, iid, report)
+            except Exception as exc:
+                log.warning('SMS filtering history unavailable: %s', type(exc).__name__)
+        rec = await asyncio.to_thread(blocking.deliver_sms, iid, sender, text, report)
+        if rec is None:
+            return {"ok": True, "duplicate_callback": True}
         await hub.broadcast({"type": "sms", "instance": iid, "message": rec})
         _dispatch_push(notify_push.EV_INCOMING_SMS, iid, sender, text)
     elif event == "sms_out" and len(args) >= 2:

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { tx, notice, renderNotice, formatDate } from '../i18n/index.js'
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../api.js'
+import QuickBlockActions from './QuickBlockActions.jsx'
 import SimSelector from './SimSelector.jsx'
 
 export default function Messages({ selected, subscribe, showToast, instances, cards, setSelected }) {
@@ -161,6 +162,7 @@ export default function Messages({ selected, subscribe, showToast, instances, ca
             : <input placeholder={tx("messages.recipientNumberEG1")} value={newTo}
               onChange={(e) => setNewTo(e.target.value)}
               style={{ maxWidth: '100%', flex: '1 1 160px', minWidth: 0 }} />}
+          {peer && <QuickBlockActions key={String(id) + peer} instance={id} peer={peer} context="sms" showToast={showToast} />}
           {peer && msgs.length > 0 && (
             selMode ? (
               <>
