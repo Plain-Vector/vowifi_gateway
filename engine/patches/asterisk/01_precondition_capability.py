@@ -67,9 +67,19 @@ def apply(root):
     anchor = '''\t\t/* Add "precondition" to Require header. */'''
     location = response.index(anchor)
     response = response[:location]+'''\t\t/* Advertise the implemented extension for this IMS endpoint only. */
-\t\tif (session->endpoint->precondition_supported &&
-\t\t    volte_add_supported_precondition(tdata)) {
-\t\t\tast_log(LOG_ERROR, "Failed to add precondition to Supported header.\\n");
+\t\tif (session->endpoint->precondition_supported) {
+\t\t\tpjsip_supported_hdr *supported = pjsip_msg_find_hdr(tdata->msg, PJSIP_H_SUPPORTED, NULL);
+\t\t\tpj_bool_t present = PJ_FALSE;
+\t\t\tunsigned int i;
+\t\t\tfor (i = 0; supported && i < supported->count; ++i) {
+\t\t\t\tif (pj_stricmp2(&supported->values[i], "precondition") == 0) {
+\t\t\t\t\tpresent = PJ_TRUE;
+\t\t\t\t}
+\t\t\t}
+\t\t\tif (!present && ((supported && supported->count >= PJSIP_GENERIC_ARRAY_MAX_COUNT) ||
+\t\t\t    volte_add_supported_precondition(tdata))) {
+\t\t\t\tast_log(LOG_ERROR, "Failed to add precondition to Supported header.\\n");
+\t\t\t}
 \t\t}
 
 '''+response[location:]

@@ -116,6 +116,7 @@ debug = 0
         (config/'logger.conf').write_text('[logfiles]\nconsole => notice,warning,error,verbose\n')
         pjsip='''[global]
 type=global
+allow_sending_180_after_183=yes
 endpoint_identifier_order=ip
 [ims-tcp]
 type=transport
